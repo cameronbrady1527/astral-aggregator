@@ -10,10 +10,12 @@
 # ==============================================================================
 
 # Standard Library -----
-import aiohttp
-import json
+import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+
+# Third Party -----
+from firecrawl import FirecrawlApp, ScrapeOptions
 
 # Internal -----
 from .base_detector import BaseDetector, ChangeResult
@@ -25,22 +27,23 @@ __all__ = ['FirecrawlDetector']
 
 
 class FirecrawlDetector(BaseDetector):
-    """Detects changes using the Firecrawl API."""
+    """Detects changes using the Firecrawl API with change tracking."""
     
     def __init__(self, site_config: Any, api_key: str, base_url: str = "https://api.firecrawl.dev"):
         super().__init__(site_config)
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
+        self.app = FirecrawlApp(api_key=self.api_key)
     
     async def get_current_state(self) -> Dict[str, Any]:
-        """Get the current state using Firecrawl's site mapping."""
+        """Get the current state using Firecrawl's crawl with change tracking."""
         try:
-            mapping_data = await self._get_site_mapping()
+            crawl_data = await self._crawl_with_change_tracking()
             
             return {
                 "detection_method": "firecrawl",
                 "site_url": self.site_url,
-                "mapping_data": mapping_data,
+                "crawl_data": crawl_data,
                 "captured_at": datetime.now().isoformat(),
                 "firecrawl_base_url": self.base_url
             }
@@ -59,103 +62,69 @@ class FirecrawlDetector(BaseDetector):
         
         try:
             if previous_state is None:
-                mapping_data = await self._get_site_mapping()
-                result.metadata["message"] = "First run - established baseline with site mapping"
-                result.metadata["total_pages_mapped"] = len(mapping_data.get("pages", []))
+                crawl_data = await self._crawl_with_change_tracking()
+                result.metadata["message"] = "First run - established baseline with crawl"
+                result.metadata["total_pages_crawled"] = len(crawl_data.get("data", []))
                 return result
             
-            changes_data = await self._track_changes(previous_state)
+            # For subsequent runs, we'll use the same crawl with change tracking
+            # The API will automatically compare with the previous state
+            crawl_data = await self._crawl_with_change_tracking()
             
-            for change in changes_data.get("changes", []):
-                change_type = change.get("status", "unknown")
-                url = change.get("url", "")
-                title = change.get("title", "")
+            # Process change tracking data
+            for page_data in crawl_data.get("data", []):
+                change_tracking = page_data.get("changeTracking", {})
+                change_status = change_tracking.get("changeStatus", "unknown")
+                visibility = change_tracking.get("visibility", "unknown")
                 
-                result.add_change(
-                    change_type=change_type,
-                    url=url,
-                    title=title,
-                    previous_hash=change.get("previous_hash"),
-                    current_hash=change.get("current_hash"),
-                    firecrawl_data=change
-                )
+                # Only report actual changes
+                if change_status in ["new", "changed", "removed"]:
+                    url = page_data.get("metadata", {}).get("url", "")
+                    title = page_data.get("metadata", {}).get("title", "")
+                    
+                    result.add_change(
+                        change_type=change_status,
+                        url=url,
+                        title=title,
+                        visibility=visibility,
+                        previous_scrape_at=change_tracking.get("previousScrapeAt"),
+                        firecrawl_data=page_data
+                    )
             
             result.metadata.update({
-                "firecrawl_response": changes_data,
-                "api_endpoint": f"{self.base_url}/crawl/change-tracking"
+                "firecrawl_response": crawl_data,
+                "api_endpoint": "FirecrawlApp SDK",
+                "total_pages_crawled": len(crawl_data.get("data", [])),
+                "credits_used": crawl_data.get("creditsUsed", 0)
             })
             
         except Exception as e:
             result.metadata["error"] = str(e)
-            result.metadata["api_endpoint"] = f"{self.base_url}/crawl/change-tracking"
+            result.metadata["api_endpoint"] = "FirecrawlApp SDK"
         
         return result
     
-    async def _get_site_mapping(self) -> Dict[str, Any]:
-        """Get site mapping using Firecrawl's mapping API."""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "url": self.site_url,
-            "mode": "map"
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{self.base_url}/crawl/map",
-                headers=headers,
-                json=payload,
-                timeout=60
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise Exception(f"Firecrawl API error: {response.status} - {error_text}")
-                
-                return await response.json()
+    async def _crawl_with_change_tracking(self) -> Dict[str, Any]:
+        """Crawl the site with change tracking enabled using the Firecrawl SDK."""
+        try:
+            # Run the crawl in a thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None, 
+                self._sync_crawl_with_change_tracking
+            )
+            return result
+        except Exception as e:
+            raise Exception(f"Firecrawl SDK error: {e}")
     
-    async def _track_changes(self, previous_state: Dict[str, Any]) -> Dict[str, Any]:
-        """Track changes using Firecrawl's change tracking API."""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "url": self.site_url,
-            "mode": "change-tracking",
-            "previous_state": previous_state.get("mapping_data", {})
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{self.base_url}/crawl/change-tracking",
-                headers=headers,
-                json=payload,
-                timeout=120
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise Exception(f"Firecrawl change tracking error: {response.status} - {error_text}")
-                
-                return await response.json()
-    
-    async def _get_crawl_status(self, crawl_id: str) -> Dict[str, Any]:
-        """Get the status of a Firecrawl job."""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}"
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.base_url}/crawl/status/{crawl_id}",
-                headers=headers,
-                timeout=30
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise Exception(f"Firecrawl status error: {response.status} - {error_text}")
-                
-                return await response.json() 
+    def _sync_crawl_with_change_tracking(self) -> Dict[str, Any]:
+        """Synchronous crawl method for the SDK."""
+        try:
+            scrape_options = ScrapeOptions(formats=['markdown', 'changeTracking'])
+            result = self.app.crawl_url(
+                self.site_url,
+                scrape_options=scrape_options
+            )
+            return result
+        except Exception as e:
+            raise Exception(f"Firecrawl SDK crawl error: {e}") 

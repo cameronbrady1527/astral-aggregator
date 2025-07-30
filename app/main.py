@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 
 # ─── Internal ──────────────────────────────────────────────────────────────────
-from routers import health_router, pm_router, agents_router, listeners
+from app.routers import listeners
 
 
 # ─── FastAPI Application ───────────────────────────────────────────────────────
@@ -43,7 +43,4 @@ async def root():
 
 
 # ─── Router Configuration ──────────────────────────────────────────────────────
-app.include_router(health_router)
-app.include_router(pm_router)
-app.include_router(agents_router)
 app.include_router(listeners.router)

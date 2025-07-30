@@ -15,4 +15,65 @@ dependencies = [
     "aiohttp>=3.9.0",
     "pyyaml>=6.0.1",
     "python-dotenv>=1.0.0",
+    "firecrawl>=2.16.3",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "httpx>=0.24.0",
+    "aioresponses>=0.7.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
 ]
