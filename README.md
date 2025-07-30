@@ -19,7 +19,18 @@ This project uses `uv` for dependency management (recommended), but you can use 
 **Option 1: Using uv (Recommended)**
 ```bash
 # Install uv if you don't have it
+
+# On macOS and Linux:
 curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# On Windows (PowerShell):
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# On Windows (with winget):
+winget install --id=astral-sh.uv
+
+# On Windows (with chocolatey):
+choco install uv
 
 # Install dependencies
 uv sync
