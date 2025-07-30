@@ -66,6 +66,18 @@ logs/
 # API keys and secrets
 config/sites.yaml
 !config/sites.yaml.example
+custom_config.yaml
 
-# Planning files
-plan.md
+# Test coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Pytest cache
+.pytest_cache/
+
+# Cursor IDE
+.cursor/
+
+# Python version file
+.python-version

@@ -52,12 +52,21 @@ poetry install
 
 ### 2. Configuration
 
-The system will automatically create a default configuration file at `config/sites.yaml` with the following sites:
+1. **Copy the example configuration:**
+   ```bash
+   cp config/sites.yaml.example config/sites.yaml
+   ```
 
-- **Judiciary UK**: https://www.judiciary.uk/
-- **Waverley Borough Council**: https://www.waverley.gov.uk/
+2. **Update the configuration:**
+   - Add your Firecrawl API key
+   - Modify site URLs and settings as needed
+   - The system comes pre-configured with these sites:
+     - **Judiciary UK**: https://www.judiciary.uk/
+     - **Waverley Borough Council**: https://www.waverley.gov.uk/
 
 You can modify this file to add more sites or change settings.
+
+**Note**: The `config/sites.yaml` file contains sensitive API keys and is not tracked in git. Always use the example file as a template.
 
 ### 3. Run the API Server
 
@@ -72,7 +81,36 @@ The API will be available at `http://localhost:8000`
 
 ```bash
 # Run the test script
-python test_change_detection.py
+python tests/test_change_detection.py
+
+# Or use the test runner
+python run_tests.py
+
+# Run with coverage
+python run_tests.py --coverage
+```
+
+## Project Structure
+
+```
+aggregator/
+├── app/                    # Main application code
+│   ├── crawler/           # Change detection modules
+│   ├── db/                # Database models and operations
+│   ├── routers/           # FastAPI route handlers
+│   └── utils/             # Utility functions
+├── config/                # Configuration files
+│   ├── sites.yaml         # Site configuration (not in git)
+│   └── sites.yaml.example # Example configuration
+├── docs/                  # Documentation
+│   ├── performance_report.md
+│   └── plan.md
+├── tests/                 # Test files
+│   ├── unit/             # Unit tests
+│   ├── integration/      # Integration tests
+│   └── api/              # API tests
+├── output/               # Generated output (not in git)
+└── run_tests.py          # Test runner script
 ```
 
 ## API Endpoints

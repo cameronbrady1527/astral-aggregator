@@ -1,28 +1,29 @@
 # ==============================================================================
 # sites.yaml.example — Example Configuration for Change Detection System
 # ==============================================================================
-# Purpose: Template configuration file - copy to sites.yaml and customize
+# Purpose: Example configuration file showing the structure for site monitoring
+# Copy this file to sites.yaml and update with your actual values
 # ==============================================================================
 
 sites:
-  example_site:
-    name: 'Example Site'
-    url: 'https://example.com/'
-    sitemap_url: 'https://example.com/sitemap.xml'
+  judiciary_uk:
+    name: 'Judiciary UK'
+    url: 'https://www.judiciary.uk/'
+    sitemap_url: 'https://www.judiciary.uk/sitemap_index.xml'
     detection_methods: ['sitemap', 'firecrawl']
-    check_interval_minutes: 1440  # 24 hours
+    check_interval_minutes: 1440
     is_active: true
   
-  another_site:
-    name: 'Another Site'
-    url: 'https://another-site.com/'
-    sitemap_url: 'https://another-site.com/sitemap.xml'
-    detection_methods: ['sitemap']  # Only sitemap method
-    check_interval_minutes: 720     # 12 hours
+  waverley_gov:
+    name: 'Waverley Borough Council'
+    url: 'https://www.waverley.gov.uk/'
+    sitemap_url: 'https://www.waverley.gov.uk/sitemap.xml'
+    detection_methods: ['sitemap', 'firecrawl']
+    check_interval_minutes: 1440
     is_active: true
 
 firecrawl:
-  api_key: 'your_firecrawl_api_key_here'
+  api_key: 'your-firecrawl-api-key-here'
   base_url: 'https://api.firecrawl.dev'
 
 system:
