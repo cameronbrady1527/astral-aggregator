@@ -1,0 +1,32 @@
+# ==============================================================================
+# sites.yaml.example — Example Configuration for Change Detection System
+# ==============================================================================
+# Purpose: Template configuration file - copy to sites.yaml and customize
+# ==============================================================================
+
+sites:
+  example_site:
+    name: 'Example Site'
+    url: 'https://example.com/'
+    sitemap_url: 'https://example.com/sitemap.xml'
+    detection_methods: ['sitemap', 'firecrawl']
+    check_interval_minutes: 1440  # 24 hours
+    is_active: true
+  
+  another_site:
+    name: 'Another Site'
+    url: 'https://another-site.com/'
+    sitemap_url: 'https://another-site.com/sitemap.xml'
+    detection_methods: ['sitemap']  # Only sitemap method
+    check_interval_minutes: 720     # 12 hours
+    is_active: true
+
+firecrawl:
+  api_key: 'your_firecrawl_api_key_here'
+  base_url: 'https://api.firecrawl.dev'
+
+system:
+  output_directory: 'output'
+  log_level: 'INFO'
+  max_retries: 3
+  timeout_seconds: 30 

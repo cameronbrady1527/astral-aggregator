@@ -7,7 +7,12 @@
 
 # ─── Standard Library ─────────────────────────────────────────────────────────
 import json
+import os
 from typing import List, Dict, Any
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
 
 # ─── Third Party ──────────────────────────────────────────────────────────────
@@ -20,7 +25,7 @@ from pydantic import BaseModel
 
 
 # ─── Internal ──────────────────────────────────────────────────────────────────
-from .routers import health_router, pm_router, agents_router
+from routers import health_router, pm_router, agents_router, listeners
 
 
 # ─── FastAPI Application ───────────────────────────────────────────────────────
@@ -41,3 +46,4 @@ async def root():
 app.include_router(health_router)
 app.include_router(pm_router)
 app.include_router(agents_router)
+app.include_router(listeners.router)
