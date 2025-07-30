@@ -32,6 +32,76 @@ change_detector = ChangeDetector()
 # API Endpoints
 # ==============================================================================
 
+@router.get("/")
+async def listeners_root() -> Dict[str, Any]:
+    """Root endpoint for listeners API with helpful information."""
+    return {
+        "message": "Website Change Detection API",
+        "description": "Monitor websites for changes using sitemap and Firecrawl detection",
+        "endpoints": {
+            "trigger_site": "POST /api/listeners/trigger/{site_id}",
+            "trigger_all": "POST /api/listeners/trigger/all",
+            "status": "GET /api/listeners/status",
+            "sites": "GET /api/listeners/sites",
+            "site_status": "GET /api/listeners/sites/{site_id}",
+            "site_changes": "GET /api/listeners/changes/{site_id}",
+            "all_changes": "GET /api/listeners/changes"
+        },
+        "available_sites": [site["site_id"] for site in change_detector.list_sites()],
+        "note": "Use POST for triggers, GET for viewing data. Visit /docs for interactive API documentation."
+    }
+
+
+@router.get("/trigger/{site_id}")
+async def trigger_site_info(site_id: str) -> Dict[str, Any]:
+    """Show information about triggering detection for a specific site."""
+    try:
+        site_config = change_detector.config_manager.get_site(site_id)
+        if not site_config:
+            raise HTTPException(status_code=404, detail=f"Site '{site_id}' not found")
+        
+        return {
+            "message": f"To trigger change detection for {site_config.name}",
+            "site_id": site_id,
+            "site_name": site_config.name,
+            "url": site_config.url,
+            "detection_methods": site_config.detection_methods,
+            "usage": f"Use: POST /api/listeners/trigger/{site_id}",
+            "curl_example": f'curl -X POST "http://localhost:8000/api/listeners/trigger/{site_id}"',
+            "powershell_example": f'Invoke-RestMethod -Uri "http://localhost:8000/api/listeners/trigger/{site_id}" -Method POST'
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get site info: {str(e)}")
+
+
+@router.get("/trigger")
+async def trigger_info() -> Dict[str, Any]:
+    """Show information about triggering detection."""
+    sites = change_detector.list_sites()
+    return {
+        "message": "Change Detection Triggers",
+        "description": "Use POST requests to trigger change detection",
+        "available_sites": [site["site_id"] for site in sites],
+        "endpoints": {
+            "trigger_site": "POST /api/listeners/trigger/{site_id}",
+            "trigger_all": "POST /api/listeners/trigger/all"
+        },
+        "examples": {
+            "curl": [
+                "curl -X POST \"http://localhost:8000/api/listeners/trigger/judiciary_uk\"",
+                "curl -X POST \"http://localhost:8000/api/listeners/trigger/all\""
+            ],
+            "powershell": [
+                "Invoke-RestMethod -Uri \"http://localhost:8000/api/listeners/trigger/judiciary_uk\" -Method POST",
+                "Invoke-RestMethod -Uri \"http://localhost:8000/api/listeners/trigger/all\" -Method POST"
+            ]
+        },
+        "note": "These endpoints require POST requests, not GET requests."
+    }
+
+
 @router.post("/trigger/{site_id}")
 async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
     """Manually trigger change detection for a specific site."""

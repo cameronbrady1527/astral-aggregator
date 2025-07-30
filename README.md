@@ -79,6 +79,19 @@ The API will be available at `http://localhost:8000`
 
 ### 4. Test the System
 
+**Option 1: Test via API (Recommended)**
+```bash
+# Check system status (works in browser)
+curl "http://localhost:8000/api/listeners/status"
+
+# Trigger change detection for Judiciary UK
+curl -X POST "http://localhost:8000/api/listeners/trigger/judiciary_uk"
+
+# View recent changes
+curl "http://localhost:8000/api/listeners/changes/judiciary_uk"
+```
+
+**Option 2: Run test scripts**
 ```bash
 # Run the test script
 python tests/test_change_detection.py
@@ -89,6 +102,9 @@ python run_tests.py
 # Run with coverage
 python run_tests.py --coverage
 ```
+
+**Option 3: Interactive API Documentation**
+Visit `http://localhost:8000/docs` in your browser for interactive API testing.
 
 ## Project Structure
 
@@ -115,17 +131,40 @@ aggregator/
 
 ## API Endpoints
 
-### Trigger Change Detection
+### Health Check & Documentation
+```bash
+# Health check (works in browser)
+curl "http://localhost:8000/"
+
+# Interactive API documentation (works in browser)
+# Visit: http://localhost:8000/docs
+```
+
+### Trigger Change Detection (POST requests only)
+
+**Important**: These endpoints require POST requests, not GET requests.
 
 ```bash
 # Detect changes for a specific site
 curl -X POST "http://localhost:8000/api/listeners/trigger/judiciary_uk"
 
+# Detect changes for Waverley Council
+curl -X POST "http://localhost:8000/api/listeners/trigger/waverley_gov"
+
 # Detect changes for all sites
 curl -X POST "http://localhost:8000/api/listeners/trigger/all"
 ```
 
-### View Status and Results
+**Using PowerShell:**
+```powershell
+# Trigger detection for Judiciary UK
+Invoke-RestMethod -Uri "http://localhost:8000/api/listeners/trigger/judiciary_uk" -Method POST
+
+# Trigger detection for all sites
+Invoke-RestMethod -Uri "http://localhost:8000/api/listeners/trigger/all" -Method POST
+```
+
+### View Status and Results (GET requests - work in browser)
 
 ```bash
 # Get system status
@@ -143,6 +182,36 @@ curl "http://localhost:8000/api/listeners/changes/judiciary_uk"
 # Get all recent changes
 curl "http://localhost:8000/api/listeners/changes"
 ```
+
+### Helpful Information Endpoints (GET requests - work in browser)
+
+These endpoints provide guidance and information about using the API:
+
+```bash
+# Main API overview
+curl "http://localhost:8000/"
+
+# Listeners API overview with all endpoints
+curl "http://localhost:8000/api/listeners/"
+
+# Trigger instructions and examples
+curl "http://localhost:8000/api/listeners/trigger"
+
+# Site-specific trigger information
+curl "http://localhost:8000/api/listeners/trigger/judiciary_uk"
+```
+
+**Browser-friendly URLs:**
+- Main API info: `http://localhost:8000/`
+- Listeners API overview: `http://localhost:8000/api/listeners/`
+- Trigger instructions: `http://localhost:8000/api/listeners/trigger`
+- Site-specific trigger info: `http://localhost:8000/api/listeners/trigger/judiciary_uk`
+- System status: `http://localhost:8000/api/listeners/status`
+- All sites: `http://localhost:8000/api/listeners/sites`
+- Judiciary UK status: `http://localhost:8000/api/listeners/sites/judiciary_uk`
+- Judiciary UK changes: `http://localhost:8000/api/listeners/changes/judiciary_uk`
+- All changes: `http://localhost:8000/api/listeners/changes`
+- Interactive API docs: `http://localhost:8000/docs`
 
 ## Configuration
 
@@ -174,13 +243,20 @@ sites:
 
 ### Firecrawl Configuration
 
-**Recommended:** To use Firecrawl detection, add your API key to the configuration:
+**Note:** Firecrawl detection requires a paid API plan with sufficient credits. The free tier may have limitations.
+
+To use Firecrawl detection, add your API key to the configuration:
 
 ```yaml
 firecrawl:
   api_key: "your_firecrawl_api_key_here"
   base_url: "https://api.firecrawl.dev"
 ```
+
+**Important:** If you see "Payment Required: Insufficient credits" errors, you can:
+1. Upgrade your Firecrawl plan at https://firecrawl.dev/pricing
+2. Use only sitemap detection by setting `detection_methods: ["sitemap"]`
+3. The sitemap detection works perfectly without requiring any API keys
 
 ## Output Format
 
@@ -352,10 +428,15 @@ asyncio.run(test_sitemap_detection())
 
 ### Common Issues
 
-1. **Sitemap not found**: Check if the sitemap URL is correct in the configuration
-2. **Firecrawl API errors**: Verify your API key and check the Firecrawl documentation
-3. **Permission errors**: Ensure the `output/` directory is writable
-4. **Network timeouts**: Increase timeout values in the configuration
+1. **"405 Method Not Allowed" errors**: 
+   - Trigger endpoints require POST requests, not GET requests
+   - Use `curl -X POST` or `Invoke-RestMethod -Method POST`
+   - Visit the helpful GET endpoints for guidance: `/api/listeners/trigger`
+
+2. **Sitemap not found**: Check if the sitemap URL is correct in the configuration
+3. **Firecrawl API errors**: Verify your API key and check the Firecrawl documentation
+4. **Permission errors**: Ensure the `output/` directory is writable
+5. **Network timeouts**: Increase timeout values in the configuration
 
 ### Logs
 
