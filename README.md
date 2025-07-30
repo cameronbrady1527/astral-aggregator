@@ -14,10 +14,30 @@ A robust, scalable system for monitoring website changes using multiple detectio
 
 ### 1. Install Dependencies
 
+This project uses `uv` for dependency management (recommended), but you can use any Python package manager you prefer.
+
+**Option 1: Using uv (Recommended)**
+```bash
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies
+uv sync
+```
+
+**Option 2: Using pip**
 ```bash
 # Install Python dependencies
 pip install -e .
 ```
+
+**Option 3: Using poetry**
+```bash
+# Install dependencies
+poetry install
+```
+
+**Note**: This project includes a `uv.lock` file for reproducible builds. If you're using a different package manager, you can safely ignore this file - it won't affect your installation.
 
 ### 2. Configuration
 
@@ -96,12 +116,16 @@ sites:
 
 1. Add a new entry to the `sites` section in `config/sites.yaml`
 2. Set the `sitemap_url` (or let the system guess it)
+   - For single sitemaps: `https://example.com/sitemap.xml`
+   - For sitemap indexes: `https://example.com/sitemap_index.xml`
 3. Choose detection methods: `["sitemap"]`, `["firecrawl"]`, or `["sitemap", "firecrawl"]`
 4. Set the check interval in minutes
 
+**Note**: The system automatically detects whether a URL points to a single sitemap or a sitemap index and handles both cases appropriately.
+
 ### Firecrawl Configuration
 
-To use Firecrawl detection, add your API key to the configuration:
+**Recommended:** To use Firecrawl detection, add your API key to the configuration:
 
 ```yaml
 firecrawl:
@@ -162,13 +186,26 @@ Each JSON file has the following structure:
           "modified_pages": 0,
           "deleted_pages": 0
         },
-        "metadata": {
-          "current_urls": 150,
-          "previous_urls": 149,
-          "new_urls": 1,
-          "deleted_urls": 0,
-          "sitemap_url": "https://www.judiciary.uk/sitemap.xml"
-        }
+                 "metadata": {
+           "current_urls": 150,
+           "previous_urls": 149,
+           "new_urls": 1,
+           "deleted_urls": 0,
+           "sitemap_url": "https://www.judiciary.uk/sitemap_index.xml",
+           "sitemap_info": {
+             "type": "sitemap_index",
+             "total_sitemaps": 23,
+             "total_urls": 19255,
+             "sitemaps": [
+               {
+                 "url": "https://www.judiciary.uk/post-sitemap.xml",
+                 "status": "success",
+                 "urls": 507,
+                 "last_modified": "2025-07-25T16:31:23+00:00"
+               }
+             ]
+           }
+         }
       }
     }
   }
@@ -179,9 +216,13 @@ Each JSON file has the following structure:
 
 ### Sitemap Detection
 
-- **Pros**: Fast, lightweight, good for detecting new pages
+- **Pros**: Fast, lightweight, good for detecting new pages, supports sitemap indexes
 - **Cons**: Only detects new/deleted pages, not content changes
 - **Use Case**: Initial baseline and new page detection
+- **Features**: 
+  - Supports single sitemaps and sitemap indexes
+  - Handles multiple sitemaps per site (e.g., posts, pages, judgments)
+  - Parallel processing of individual sitemaps for performance
 
 ### Firecrawl Detection
 
@@ -213,6 +254,18 @@ aggregator/
 ```
 
 ## Development
+
+### Development Setup
+
+For development, you can use any of the installation methods above. If you're using `uv`, you can also run:
+
+```bash
+# Install in development mode
+uv sync --dev
+
+# Run the server with auto-reload
+uv run uvicorn app.main:app --reload
+```
 
 ### Adding New Detection Methods
 
