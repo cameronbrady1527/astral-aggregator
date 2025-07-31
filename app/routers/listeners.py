@@ -25,8 +25,20 @@ from ..crawler.change_detector import ChangeDetector
 
 router = APIRouter(prefix="/api/listeners", tags=["listeners"])
 
-# Global change detector instance
-change_detector = ChangeDetector()
+# Lazy initialization of change detector
+_change_detector = None
+
+def get_change_detector() -> ChangeDetector:
+    """Get or create the change detector instance."""
+    global _change_detector
+    if _change_detector is None:
+        try:
+            _change_detector = ChangeDetector()
+        except Exception as e:
+            # If initialization fails, create a minimal detector for basic endpoints
+            print(f"Warning: ChangeDetector initialization failed: {e}")
+            _change_detector = None
+    return _change_detector
 
 # ==============================================================================
 # API Endpoints
@@ -35,27 +47,50 @@ change_detector = ChangeDetector()
 @router.get("/")
 async def listeners_root() -> Dict[str, Any]:
     """Root endpoint for listeners API with helpful information."""
-    return {
-        "message": "Website Change Detection API",
-        "description": "Monitor websites for changes using sitemap and Firecrawl detection",
-        "endpoints": {
-            "trigger_site": "POST /api/listeners/trigger/{site_id}",
-            "trigger_all": "POST /api/listeners/trigger/all",
-            "status": "GET /api/listeners/status",
-            "sites": "GET /api/listeners/sites",
-            "site_status": "GET /api/listeners/sites/{site_id}",
-            "site_changes": "GET /api/listeners/changes/{site_id}",
-            "all_changes": "GET /api/listeners/changes"
-        },
-        "available_sites": [site["site_id"] for site in change_detector.list_sites()],
-        "note": "Use POST for triggers, GET for viewing data. Visit /docs for interactive API documentation."
-    }
+    try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            return {
+                "message": "Website Change Detection API",
+                "description": "Monitor websites for changes using sitemap and Firecrawl detection",
+                "status": "initializing",
+                "note": "System is starting up. Please try again in a moment."
+            }
+        
+        sites = change_detector.list_sites()
+        return {
+            "message": "Website Change Detection API",
+            "description": "Monitor websites for changes using sitemap and Firecrawl detection",
+            "endpoints": {
+                "trigger_site": "POST /api/listeners/trigger/{site_id}",
+                "trigger_all": "POST /api/listeners/trigger/all",
+                "status": "GET /api/listeners/status",
+                "sites": "GET /api/listeners/sites",
+                "site_status": "GET /api/listeners/sites/{site_id}",
+                "site_changes": "GET /api/listeners/changes/{site_id}",
+                "all_changes": "GET /api/listeners/changes"
+            },
+            "available_sites": [site["site_id"] for site in sites],
+            "note": "Use POST for triggers, GET for viewing data. Visit /docs for interactive API documentation."
+        }
+    except Exception as e:
+        return {
+            "message": "Website Change Detection API",
+            "description": "Monitor websites for changes using sitemap and Firecrawl detection",
+            "status": "error",
+            "error": str(e),
+            "note": "System encountered an error. Please check logs."
+        }
 
 
 @router.get("/trigger/{site_id}")
 async def trigger_site_info(site_id: str) -> Dict[str, Any]:
     """Show information about triggering detection for a specific site."""
     try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
+        
         site_config = change_detector.config_manager.get_site(site_id)
         if not site_config:
             raise HTTPException(status_code=404, detail=f"Site '{site_id}' not found")
@@ -79,33 +114,55 @@ async def trigger_site_info(site_id: str) -> Dict[str, Any]:
 @router.get("/trigger")
 async def trigger_info() -> Dict[str, Any]:
     """Show information about triggering detection."""
-    sites = change_detector.list_sites()
-    return {
-        "message": "Change Detection Triggers",
-        "description": "Use POST requests to trigger change detection",
-        "available_sites": [site["site_id"] for site in sites],
-        "endpoints": {
-            "trigger_site": "POST /api/listeners/trigger/{site_id}",
-            "trigger_all": "POST /api/listeners/trigger/all"
-        },
-        "examples": {
-            "curl": [
-                "curl -X POST \"http://localhost:8000/api/listeners/trigger/judiciary_uk\"",
-                "curl -X POST \"http://localhost:8000/api/listeners/trigger/all\""
-            ],
-            "powershell": [
-                "Invoke-RestMethod -Uri \"http://localhost:8000/api/listeners/trigger/judiciary_uk\" -Method POST",
-                "Invoke-RestMethod -Uri \"http://localhost:8000/api/listeners/trigger/all\" -Method POST"
-            ]
-        },
-        "note": "These endpoints require POST requests, not GET requests."
-    }
+    try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            return {
+                "message": "Change Detection Triggers",
+                "description": "Use POST requests to trigger change detection",
+                "status": "initializing",
+                "note": "System is starting up. Please try again in a moment."
+            }
+        
+        sites = change_detector.list_sites()
+        return {
+            "message": "Change Detection Triggers",
+            "description": "Use POST requests to trigger change detection",
+            "available_sites": [site["site_id"] for site in sites],
+            "endpoints": {
+                "trigger_site": "POST /api/listeners/trigger/{site_id}",
+                "trigger_all": "POST /api/listeners/trigger/all"
+            },
+            "examples": {
+                "curl": [
+                    "curl -X POST \"http://localhost:8000/api/listeners/trigger/judiciary_uk\"",
+                    "curl -X POST \"http://localhost:8000/api/listeners/trigger/all\""
+                ],
+                "powershell": [
+                    "Invoke-RestMethod -Uri \"http://localhost:8000/api/listeners/trigger/judiciary_uk\" -Method POST",
+                    "Invoke-RestMethod -Uri \"http://localhost:8000/api/listeners/trigger/all\" -Method POST"
+                ]
+            },
+            "note": "These endpoints require POST requests, not GET requests."
+        }
+    except Exception as e:
+        return {
+            "message": "Change Detection Triggers",
+            "description": "Use POST requests to trigger change detection",
+            "status": "error",
+            "error": str(e),
+            "note": "System encountered an error. Please check logs."
+        }
 
 
 @router.post("/trigger/{site_id}")
 async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
     """Manually trigger change detection for a specific site."""
     try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
+        
         results = await change_detector.detect_changes_for_site(site_id)
         return {
             "status": "success",
@@ -122,6 +179,10 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
 async def trigger_all_sites_detection() -> Dict[str, Any]:
     """Manually trigger change detection for all active sites."""
     try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
+        
         results = await change_detector.detect_changes_for_all_sites()
         return {
             "status": "success",
@@ -136,6 +197,16 @@ async def trigger_all_sites_detection() -> Dict[str, Any]:
 async def get_system_status() -> Dict[str, Any]:
     """Get the overall system status."""
     try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            return {
+                "status": "initializing",
+                "message": "System is starting up",
+                "total_sites": 0,
+                "active_sites": 0,
+                "sites": []
+            }
+        
         sites = change_detector.list_sites()
         return {
             "status": "healthy",
@@ -144,13 +215,23 @@ async def get_system_status() -> Dict[str, Any]:
             "sites": sites
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"System error: {str(e)}",
+            "total_sites": 0,
+            "active_sites": 0,
+            "sites": []
+        }
 
 
 @router.get("/sites")
 async def list_sites() -> List[Dict[str, Any]]:
     """List all configured sites."""
     try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            return []
+        
         return change_detector.list_sites()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list sites: {str(e)}")
@@ -160,6 +241,10 @@ async def list_sites() -> List[Dict[str, Any]]:
 async def get_site_status(site_id: str) -> Dict[str, Any]:
     """Get detailed status for a specific site."""
     try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
+        
         status = change_detector.get_site_status(site_id)
         if "error" in status:
             raise HTTPException(status_code=404, detail=status["error"])
@@ -177,6 +262,10 @@ async def get_site_changes(
 ) -> Dict[str, Any]:
     """Get recent changes for a specific site."""
     try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
+        
         site_config = change_detector.config_manager.get_site(site_id)
         if not site_config:
             raise HTTPException(status_code=404, detail=f"Site '{site_id}' not found")
@@ -214,6 +303,14 @@ async def get_all_changes(
 ) -> Dict[str, Any]:
     """Get recent changes across all sites."""
     try:
+        change_detector = get_change_detector()
+        if change_detector is None:
+            return {
+                "recent_changes": [],
+                "total_sites": 0,
+                "status": "initializing"
+            }
+        
         all_changes = []
         sites = change_detector.list_sites()
         
