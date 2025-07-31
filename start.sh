@@ -25,12 +25,16 @@ python -c "import app.main; print('✅ App imported successfully')" || {
     exit 1
 }
 
+# Get the port with proper fallback
+PORT_NUM=${PORT:-8000}
+echo "Using port: $PORT_NUM"
+
 # Start the application
-echo "Starting uvicorn server on port ${PORT:-8000}"
+echo "Starting uvicorn server on port $PORT_NUM"
 echo "Host: 0.0.0.0"
 
 exec uvicorn app.main:app \
     --host 0.0.0.0 \
-    --port ${PORT:-8000} \
+    --port $PORT_NUM \
     --workers 1 \
     --log-level info 
