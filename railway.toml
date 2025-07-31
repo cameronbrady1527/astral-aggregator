@@ -2,8 +2,8 @@
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
-# Use enhanced startup script with PORT environment variable handling
-startCommand = "python start.py"
+# Use shell script with explicit PORT environment variable handling
+startCommand = "bash start_railway.sh"
 
 [deploy]
 healthcheckPath = "/"

@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 
 # Make scripts executable
-RUN chmod +x start.sh start.py scripts/start_railway.py scripts/start_uvicorn.py scripts/healthcheck.py scripts/healthcheck.sh scripts/simple_healthcheck.py scripts/diagnose.py scripts/deploy_debug.py
+RUN chmod +x start.sh start.py start_railway.sh test_port.py scripts/start_railway.py scripts/start_uvicorn.py scripts/healthcheck.py scripts/healthcheck.sh scripts/simple_healthcheck.py scripts/diagnose.py scripts/deploy_debug.py
 
 # Create output directory with proper permissions
 RUN mkdir -p output && chmod 755 output
@@ -37,5 +37,4 @@ RUN mkdir -p output && chmod 755 output
 # Expose port (Railway will override this)
 EXPOSE 8000
 
-# Run the application with enhanced startup script
-CMD ["python", "start.py"] 
+# Note: Railway will use startCommand from railway.toml instead of CMD 
