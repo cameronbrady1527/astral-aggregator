@@ -119,13 +119,22 @@ aggregator/
 │   ├── sites.yaml         # Site configuration (not in git)
 │   └── sites.yaml.example # Example configuration
 ├── docs/                  # Documentation
+│   ├── deploy.md          # Deployment guide
 │   ├── performance_report.md
 │   └── plan.md
+├── scripts/               # Deployment and utility scripts
+│   ├── healthcheck.py     # Python health check script
+│   ├── healthcheck.sh     # Bash health check script
+│   └── README.md          # Scripts documentation
 ├── tests/                 # Test files
 │   ├── unit/             # Unit tests
 │   ├── integration/      # Integration tests
-│   └── api/              # API tests
+│   ├── api/              # API tests
+│   └── test_healthcheck.py # Local health check testing
 ├── output/               # Generated output (not in git)
+├── Dockerfile            # Container configuration
+├── railway.toml          # Railway deployment config
+├── start.sh             # Application startup script
 └── run_tests.py          # Test runner script
 ```
 

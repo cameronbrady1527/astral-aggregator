@@ -19,8 +19,9 @@ def check_health():
         ping_url = f"http://localhost:{port}/ping"
         print(f"Checking ping at: {ping_url}")
         
-        response = requests.get(ping_url, timeout=5)
+        response = requests.get(ping_url, timeout=10)
         print(f"Ping response status: {response.status_code}")
+        print(f"Ping response content: {response.text}")
         
         if response.status_code == 200:
             print("✅ Ping check passed")
@@ -30,23 +31,25 @@ def check_health():
         root_url = f"http://localhost:{port}/"
         print(f"Checking root at: {root_url}")
         
-        response = requests.get(root_url, timeout=5)
+        response = requests.get(root_url, timeout=10)
         print(f"Root response status: {response.status_code}")
+        print(f"Root response content: {response.text[:200]}...")
         
         if response.status_code == 200:
             print("✅ Root check passed")
             return True
             
-    except requests.exceptions.ConnectionError:
-        print("❌ Health check failed: connection error")
+    except requests.exceptions.ConnectionError as e:
+        print(f"❌ Health check failed: connection error - {e}")
         return False
-    except requests.exceptions.Timeout:
-        print("❌ Health check failed: timeout")
+    except requests.exceptions.Timeout as e:
+        print(f"❌ Health check failed: timeout - {e}")
         return False
     except Exception as e:
         print(f"❌ Health check failed: {e}")
         return False
     
+    print("❌ Health check failed: unexpected response")
     return False
 
 if __name__ == "__main__":
@@ -54,11 +57,12 @@ if __name__ == "__main__":
     for attempt in range(5):
         print(f"Health check attempt {attempt + 1}/5")
         if check_health():
+            print("✅ Health check successful")
             sys.exit(0)
         
         if attempt < 4:  # Don't sleep after last attempt
-            print("Waiting 10 seconds before retry...")
-            time.sleep(10)
+            print("Waiting 15 seconds before retry...")
+            time.sleep(15)
     
     print("❌ All health check attempts failed")
     sys.exit(1) 

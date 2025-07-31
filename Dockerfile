@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 
 # Make scripts executable
-RUN chmod +x start.sh healthcheck.py healthcheck.sh
+RUN chmod +x start.sh scripts/healthcheck.py scripts/healthcheck.sh
 
 # Create output directory with proper permissions
 RUN mkdir -p output && chmod 755 output
@@ -38,9 +38,9 @@ RUN mkdir -p output && chmod 755 output
 # Expose port (Railway will override this)
 EXPOSE 8000
 
-# Health check with more lenient settings using bash script
-HEALTHCHECK --interval=60s --timeout=30s --start-period=180s --retries=5 \
-    CMD ./healthcheck.sh
+# Health check with more lenient settings using Python script
+HEALTHCHECK --interval=90s --timeout=30s --start-period=300s --retries=3 \
+    CMD python scripts/healthcheck.py
 
 # Run the application with Railway-specific settings
 CMD ["./start.sh"] 

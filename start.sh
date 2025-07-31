@@ -39,12 +39,16 @@ try:
     from fastapi.testclient import TestClient
     client = TestClient(app)
     response = client.get('/ping')
-    print(f'Ping test: {response.status_code}')
+    print(f'Ping test: {response.status_code} - {response.text}')
     response = client.get('/health')
-    print(f'Health test: {response.status_code}')
+    print(f'Health test: {response.status_code} - {response.text}')
+    response = client.get('/')
+    print(f'Root test: {response.status_code}')
     print('✅ Health endpoints working')
 except Exception as e:
     print(f'❌ Health test failed: {e}')
+    import traceback
+    traceback.print_exc()
     exit(1)
 " || {
     echo "❌ Health endpoint test failed"

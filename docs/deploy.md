@@ -1,167 +1,74 @@
-# Railway Deployment Guide for Astral Aggregator
+# Deployment Guide
 
-This guide provides step-by-step instructions for deploying your FastAPI-based website change detection system on Railway.
+## Railway Deployment
 
-## Why Railway?
+This guide covers deploying the Astral Aggregator to Railway.
 
-Railway is the **recommended platform** for your Astral Aggregator because:
+### Quick Deploy
 
-✅ **Perfect for FastAPI apps** - Native Python support  
-✅ **Built-in PostgreSQL** - Managed database included  
-✅ **Background processing** - Great for scheduled change detection tasks  
-✅ **Easy environment management** - Simple secrets and variables  
-✅ **Automatic deployments** - Git-based deployment workflow  
-✅ **Good pricing** - $5/month starter plan with generous limits  
+1. **Connect Repository**: Link your GitHub repository to Railway
+2. **Configure Environment**: Set required environment variables
+3. **Deploy**: Railway will automatically build and deploy using the Dockerfile
 
-## Prerequisites
+### Environment Variables
 
-1. **GitHub Repository**: Your code must be in a GitHub repository
-2. **Firecrawl API Key**: You'll need a valid Firecrawl API key
-3. **Railway Account**: Sign up at [railway.app](https://railway.app)
-
-## Step-by-Step Deployment
-
-### 1. Prepare Your Repository
-
-Ensure your repository contains these files:
-- `Dockerfile`
-- `requirements.txt`
-- `railway.json`
-- `.dockerignore`
-- `start.sh`
-- `healthcheck.py`
-
-### 2. Deploy to Railway
-
-#### Option A: Deploy via Railway Dashboard
-
-1. **Sign up/Login**: Go to [railway.app](https://railway.app) and sign in
-2. **Create Project**: Click "New Project" → "Deploy from GitHub repo"
-3. **Select Repository**: Choose your Astral Aggregator repository
-4. **Auto-Deploy**: Railway will automatically detect the Dockerfile and start building
-5. **Wait for Build**: The build process takes 2-5 minutes
-
-#### Option B: Deploy via Railway CLI
+Required variables for Railway:
 
 ```bash
-# Install Railway CLI
-npm install -g @railway/cli
+# Database (if using external PostgreSQL)
+DATABASE_URL=postgresql://user:pass@host:port/db
 
-# Login to Railway
-railway login
+# API Keys (if using external services)
+FIRECRAWL_API_KEY=your_api_key_here
 
-# Initialize project
-railway init
-
-# Deploy
-railway up
-```
-
-### 3. Configure Environment Variables
-
-In your Railway project dashboard:
-
-1. Go to your project → "Variables" tab
-2. Add these environment variables:
-
-```bash
-# Required
-FIRECRAWL_API_KEY=your_firecrawl_api_key_here
-
-# Optional (Railway provides these automatically)
-DATABASE_URL=postgresql://...  # Railway auto-provides
-PORT=8000                      # Railway auto-provides
-RAILWAY_STATIC_URL=your-app-url # Railway auto-provides
-
-# Optional custom variables
+# Optional: Logging
 LOG_LEVEL=INFO
-PYTHONPATH=/app
 ```
 
-### 4. Add PostgreSQL Database (Optional)
+### Health Check Configuration
 
-If you need persistent storage:
+The app includes multiple health check mechanisms:
 
-1. In Railway dashboard, click "New" → "Database" → "PostgreSQL"
-2. Railway will automatically provide the `DATABASE_URL` environment variable
-3. Your app will automatically connect to the database
+1. **Railway Health Check**: Uses `/ping` endpoint (configured in `railway.toml`)
+2. **Docker Health Check**: Uses custom `scripts/healthcheck.py` script
+3. **Manual Testing**: Use `tests/test_healthcheck.py` for local testing
 
-### 5. Configure Custom Domain (Optional)
+**Health Check Endpoints:**
+- `/ping` - Simple ping response (`{"pong": "ok"}`)
+- `/health` - Detailed health status
+- `/` - Root endpoint with API information
 
-1. Go to your service → "Settings" → "Domains"
-2. Add your custom domain
-3. Railway will provide SSL certificates automatically
+### File Structure
 
-## Testing Your Deployment
-
-### 1. Health Check
-Visit your Railway app URL (e.g., `https://astral-aggregator-production.up.railway.app`) to see:
-```json
-{
-  "status": "healthy",
-  "service": "astral-api",
-  "version": "0.0.1",
-  "message": "Welcome to the Astral API - Website Change Detection System"
-}
+```
+aggregator/
+├── app/                    # Main application code
+├── scripts/               # Deployment and utility scripts
+│   ├── healthcheck.py     # Python health check script
+│   └── healthcheck.sh     # Bash health check script
+├── tests/                 # Test files
+│   ├── test_healthcheck.py # Local health check testing
+│   └── ...                # Other test files
+├── Dockerfile             # Container configuration
+├── railway.toml           # Railway deployment config
+└── start.sh              # Application startup script
 ```
 
-### 2. Simple Ping Test
-Test the basic ping endpoint:
-- `https://your-app.railway.app/ping` → `{"pong": "ok"}`
-
-### 3. Health Endpoint
-Test the detailed health endpoint:
-- `https://your-app.railway.app/health` → `{"status": "healthy", "service": "astral-api", "version": "0.0.1"}`
-
-### 4. API Documentation
-Visit `/docs` for interactive FastAPI documentation:
-- `https://your-app.railway.app/docs`
-
-### 5. Test Endpoints
-```bash
-# Check system status
-curl https://your-app.railway.app/api/listeners/status
-
-# Trigger change detection
-curl -X POST https://your-app.railway.app/api/listeners/trigger/judiciary_uk
-
-# View changes
-curl https://your-app.railway.app/api/listeners/changes/judiciary_uk
-```
-
-## Railway-Specific Features
-
-### Automatic Deployments
-- Every push to your main branch triggers a new deployment
-- Railway builds and deploys automatically
-- No manual intervention needed
-
-### Environment Management
-- Separate environments for development, staging, and production
-- Easy variable management through the dashboard
-- Secure secrets storage
-
-### Monitoring & Logs
-- Real-time logs in the Railway dashboard
-- Built-in monitoring and health checks
-- Automatic restarts on failures
-
-### Scaling
-- Easy scaling through the dashboard
-- Multiple replicas for high availability
-- Automatic load balancing
-
-## Troubleshooting
-
-### Common Issues
+### Troubleshooting
 
 #### 1. Health Check Failures
-**Problem**: Health checks are failing during deployment
+**Problem**: Health checks fail after deployment
+**Symptoms**: 
+- Railway shows "Health check failed"
+- App appears to be running but health checks timeout
+
 **Solution**: 
 - The app now has multiple health check endpoints (`/ping` and `/health`)
 - Railway uses `/ping` as the primary health check (simpler)
-- Docker uses the custom health check script
+- Docker uses the custom health check script with more lenient settings
 - Check the Railway logs for detailed error messages
+- Health check timeout increased to 10 seconds
+- Start period increased to 5 minutes to allow for app initialization
 
 #### 2. Build Failures
 **Problem**: Docker build fails
@@ -216,7 +123,7 @@ railway shell
 The app includes multiple health check mechanisms:
 
 1. **Railway Health Check**: Uses `/ping` endpoint (simplest)
-2. **Docker Health Check**: Uses custom `healthcheck.py` script
+2. **Docker Health Check**: Uses custom `scripts/healthcheck.py` script
 3. **Manual Testing**: You can test endpoints manually
 
 If health checks are failing:
@@ -225,6 +132,15 @@ If health checks are failing:
 2. **Test Endpoints Manually**: Visit `/ping` and `/health` in browser
 3. **Check Environment Variables**: Ensure `PORT` is set correctly
 4. **Review Startup Script**: The script provides detailed debugging output
+5. **Use Local Test Script**: Run `python tests/test_healthcheck.py` after starting the app locally
+
+**Recent Health Check Improvements:**
+- Increased timeout from 5 to 10 seconds
+- Added more detailed error logging
+- Increased start period to 5 minutes
+- Reduced retry attempts but increased wait time between retries
+- Better error messages and debugging output
+- Reorganized file structure for better organization
 
 ## Cost Optimization
 
@@ -256,31 +172,4 @@ If health checks are failing:
 ### Backup & Recovery
 - Automatic database backups (if using Railway PostgreSQL)
 - Easy rollback to previous deployments
-- Git-based version control
-
-## Next Steps
-
-1. **Monitor**: Set up alerts for your app's health
-2. **Scale**: Add more replicas if needed
-3. **Custom Domain**: Add your own domain name
-4. **Database**: Set up PostgreSQL for persistent storage
-5. **CI/CD**: Configure automatic testing before deployment
-
-## Support
-
-- **Railway Docs**: [docs.railway.app](https://docs.railway.app)
-- **Community**: [discord.gg/railway](https://discord.gg/railway)
-- **Status**: [status.railway.app](https://status.railway.app)
-
-## Recent Health Check Fixes
-
-The deployment has been optimized with:
-
-✅ **Multiple Health Check Endpoints**: `/ping` (simple) and `/health` (detailed)  
-✅ **Custom Health Check Script**: `healthcheck.py` for Docker health checks  
-✅ **Improved Startup Script**: `start.sh` with debugging and testing  
-✅ **Lazy Initialization**: Prevents startup failures  
-✅ **Better Error Handling**: Graceful degradation during startup  
-✅ **Optimized Dockerfile**: Faster builds and better caching  
-
-Your Astral Aggregator is now ready for production use on Railway! 🚀 
+- Git-based version control 

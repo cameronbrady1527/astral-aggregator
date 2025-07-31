@@ -46,14 +46,14 @@ This guide helps resolve common deployment issues with the Astral Aggregator on 
 The app has multiple health check mechanisms:
 
 1. **Railway Health Check**: Uses `/ping` endpoint
-2. **Docker Health Check**: Uses `healthcheck.sh` script
-3. **Fallback Health Check**: Uses `healthcheck.py` script
+2. **Docker Health Check**: Uses `scripts/healthcheck.py` script
+3. **Fallback Health Check**: Uses `scripts/healthcheck.sh` script
 
 **Health Check Settings:**
-- **Start Period**: 180 seconds (3 minutes)
-- **Interval**: 60 seconds
+- **Start Period**: 300 seconds (5 minutes)
+- **Interval**: 90 seconds
 - **Timeout**: 30 seconds
-- **Retries**: 5 attempts
+- **Retries**: 3 attempts
 
 ## Common Issues
 
@@ -107,7 +107,7 @@ print('Health:', client.get('/health').status_code)
 ### 4. Check Health Check Script
 ```bash
 # Test health check script
-python healthcheck.py
+python scripts/healthcheck.py
 ```
 
 ## Railway-Specific Issues
