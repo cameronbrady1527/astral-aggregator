@@ -2,8 +2,8 @@
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
-# Use shell script with explicit PORT environment variable handling
-startCommand = "bash start_railway.sh"
+# Let Railway handle startup automatically - remove custom startCommand
+# Railway will use the Dockerfile CMD by default
 
 [deploy]
 healthcheckPath = "/"
