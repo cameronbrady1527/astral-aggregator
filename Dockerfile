@@ -37,5 +37,5 @@ RUN mkdir -p output && chmod 755 output
 # Expose port (Railway will override this)
 EXPOSE 8000
 
-# Use Railway Python startup script
-CMD ["python", "scripts/railway_start.py"] 
+# Use shell script for Railway deployment
+CMD ["./start.sh"] 

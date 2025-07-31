@@ -1,9 +1,5 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
-
-# Let Railway handle startup automatically - remove custom startCommand
-# Railway will use the Dockerfile CMD by default
+builder = "NIXPACKS"
 
 [deploy]
 healthcheckPath = "/ping"
