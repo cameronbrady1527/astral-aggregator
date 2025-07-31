@@ -60,7 +60,8 @@ class ChangeDetectionWriter:
     def write_site_state(self, site_name: str, state_data: Dict[str, Any]) -> str:
         """Write current site state to a JSON file in the run folder."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{site_name}_state_{timestamp}.json"
+        method = state_data.get("detection_method", "unknown")
+        filename = f"{site_name}_state_{method}_{timestamp}.json"
         filepath = self.run_folder / filename
         
         output_data = {
@@ -78,9 +79,12 @@ class ChangeDetectionWriter:
         
         return str(filepath)
     
-    def get_latest_state_file(self, site_name: str) -> str | None:
+    def get_latest_state_file(self, site_name: str, method: str = None) -> str | None:
         """Get the path to the most recent state file for a site across all run folders."""
-        pattern = f"{site_name}_state_*.json"
+        if method:
+            pattern = f"{site_name}_state_{method}_*.json"
+        else:
+            pattern = f"{site_name}_state_*.json"
         state_files = []
         
         # Search in all run folders

@@ -26,19 +26,20 @@ app = FastAPI(title="Astral API", description="Website Change Detection System")
 # Add startup logging
 @app.on_event("startup")
 async def startup_event():
-    """Log startup information."""
+    """Log startup information and include routers."""
     print("🚀 Astral API starting up...")
     print(f"PORT environment variable: {os.getenv('PORT', 'NOT SET')}")
     print(f"PYTHONPATH environment variable: {os.getenv('PYTHONPATH', 'NOT SET')}")
     print(f"Current working directory: {os.getcwd()}")
     
-    # Try to include routers (but don't fail if it doesn't work)
+    # Try to include routers
     try:
-        from app.routers import listeners
+        from app.routers import listeners, dashboard
         app.include_router(listeners.router)
-        print("✅ Listeners router included successfully")
+        app.include_router(dashboard.router)
+        print("✅ Listeners and dashboard routers included successfully")
     except Exception as e:
-        print(f"⚠️ Listeners router not included: {e}")
+        print(f"⚠️ Routers not included: {e}")
         # Create a simple fallback endpoint
         @app.get("/api/listeners/status")
         async def fallback_status():
@@ -67,15 +68,23 @@ async def health_check():
 
 @app.get("/")
 async def root():
-    """Root endpoint - simplified for reliability."""
     print("📡 Root endpoint called")
     return {
         "status": "healthy",
         "service": "astral-api",
         "version": "0.0.1",
-        "message": "Welcome to the Astral API - Website Change Detection System"
+        "message": "Welcome to the Astral API - Website Change Detection System",
+        "endpoints": {
+            "health_check": "/health",
+            "ping": "/ping",
+            "api_docs": "/docs",
+            "dashboard": "/dashboard/"
+        }
     }
 
+
+
+# Add a simple test endpoint
 @app.get("/test")
 async def test():
     """Test endpoint to verify the app is working."""
