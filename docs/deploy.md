@@ -24,10 +24,12 @@ Railway is the **recommended platform** for your Astral Aggregator because:
 ### 1. Prepare Your Repository
 
 Ensure your repository contains these files:
-- `Dockerfile` ✅ (already created)
-- `requirements.txt` ✅ (already created)
-- `railway.json` ✅ (already created)
-- `.dockerignore` ✅ (already created)
+- `Dockerfile`
+- `requirements.txt`
+- `railway.json`
+- `.dockerignore`
+- `start.sh`
+- `healthcheck.py`
 
 ### 2. Deploy to Railway
 
@@ -103,11 +105,19 @@ Visit your Railway app URL (e.g., `https://astral-aggregator-production.up.railw
 }
 ```
 
-### 2. API Documentation
+### 2. Simple Ping Test
+Test the basic ping endpoint:
+- `https://your-app.railway.app/ping` → `{"pong": "ok"}`
+
+### 3. Health Endpoint
+Test the detailed health endpoint:
+- `https://your-app.railway.app/health` → `{"status": "healthy", "service": "astral-api", "version": "0.0.1"}`
+
+### 4. API Documentation
 Visit `/docs` for interactive FastAPI documentation:
 - `https://your-app.railway.app/docs`
 
-### 3. Test Endpoints
+### 5. Test Endpoints
 ```bash
 # Check system status
 curl https://your-app.railway.app/api/listeners/status
@@ -145,33 +155,45 @@ curl https://your-app.railway.app/api/listeners/changes/judiciary_uk
 
 ### Common Issues
 
-#### 1. Build Failures
+#### 1. Health Check Failures
+**Problem**: Health checks are failing during deployment
+**Solution**: 
+- The app now has multiple health check endpoints (`/ping` and `/health`)
+- Railway uses `/ping` as the primary health check (simpler)
+- Docker uses the custom health check script
+- Check the Railway logs for detailed error messages
+
+#### 2. Build Failures
 **Problem**: Docker build fails
 **Solution**: 
 - Check the build logs in Railway dashboard
 - Ensure all dependencies are in `requirements.txt`
 - Verify the Dockerfile syntax
+- The startup script provides detailed debugging information
 
-#### 2. Environment Variables
+#### 3. Environment Variables
 **Problem**: App can't find required variables
 **Solution**:
 - Double-check all variables are set in Railway dashboard
 - Ensure variable names match exactly (case-sensitive)
 - Restart the service after adding variables
+- Check the startup logs for variable loading
 
-#### 3. Port Issues
+#### 4. Port Issues
 **Problem**: App not accessible
 **Solution**:
 - Railway automatically provides the `PORT` environment variable
 - Ensure your app listens on `0.0.0.0:$PORT`
 - Check the service logs for port binding errors
+- The startup script handles port configuration automatically
 
-#### 4. Database Connection
+#### 5. Database Connection
 **Problem**: Can't connect to PostgreSQL
 **Solution**:
 - Verify `DATABASE_URL` is set correctly
 - Check if the database service is running
 - Ensure your app handles database connection gracefully
+- The lazy initialization prevents startup failures
 
 ### Debugging Commands
 
@@ -188,6 +210,21 @@ railway service restart
 # Open shell in container
 railway shell
 ```
+
+### Health Check Debugging
+
+The app includes multiple health check mechanisms:
+
+1. **Railway Health Check**: Uses `/ping` endpoint (simplest)
+2. **Docker Health Check**: Uses custom `healthcheck.py` script
+3. **Manual Testing**: You can test endpoints manually
+
+If health checks are failing:
+
+1. **Check Railway Logs**: Look for startup errors
+2. **Test Endpoints Manually**: Visit `/ping` and `/health` in browser
+3. **Check Environment Variables**: Ensure `PORT` is set correctly
+4. **Review Startup Script**: The script provides detailed debugging output
 
 ## Cost Optimization
 
@@ -234,5 +271,16 @@ railway shell
 - **Railway Docs**: [docs.railway.app](https://docs.railway.app)
 - **Community**: [discord.gg/railway](https://discord.gg/railway)
 - **Status**: [status.railway.app](https://status.railway.app)
+
+## Recent Health Check Fixes
+
+The deployment has been optimized with:
+
+✅ **Multiple Health Check Endpoints**: `/ping` (simple) and `/health` (detailed)  
+✅ **Custom Health Check Script**: `healthcheck.py` for Docker health checks  
+✅ **Improved Startup Script**: `start.sh` with debugging and testing  
+✅ **Lazy Initialization**: Prevents startup failures  
+✅ **Better Error Handling**: Graceful degradation during startup  
+✅ **Optimized Dockerfile**: Faster builds and better caching  
 
 Your Astral Aggregator is now ready for production use on Railway! 🚀 

@@ -14,7 +14,7 @@ echo "Python version: $(python --version)"
 
 # Check if requirements are installed
 echo "Checking installed packages..."
-pip list
+pip list | grep -E "(fastapi|uvicorn)"
 
 # Create output directory if it doesn't exist
 mkdir -p output
@@ -23,6 +23,21 @@ echo "Output directory created/verified"
 # Set environment variables
 export PYTHONPATH=/app
 export PYTHONUNBUFFERED=1
+
+# Test that the app can be imported
+echo "Testing app import..."
+python -c "import app.main; print('App imported successfully')"
+
+# Test health endpoint before starting server
+echo "Testing health endpoint..."
+python -c "
+from app.main import app
+from fastapi.testclient import TestClient
+client = TestClient(app)
+response = client.get('/health')
+print(f'Health check test: {response.status_code}')
+print(f'Response: {response.json()}')
+"
 
 # Start the application
 echo "Starting uvicorn server..."

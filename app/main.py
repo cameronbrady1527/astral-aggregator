@@ -42,6 +42,12 @@ async def health_check():
     }
 
 
+@app.get("/ping")
+async def ping():
+    """Simple ping endpoint for basic health checks."""
+    return {"pong": "ok"}
+
+
 @app.get("/")
 async def root():
    return {
@@ -51,6 +57,7 @@ async def root():
        "message": "Welcome to the Astral API - Website Change Detection System",
        "endpoints": {
            "health_check": "/health",
+           "ping": "/ping",
            "api_docs": "/docs",
            "listeners_api": "/api/listeners",
            "listeners_root": "/api/listeners/",
