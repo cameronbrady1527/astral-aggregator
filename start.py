@@ -24,7 +24,7 @@ def main():
     logger.info(f"Python version: {sys.version}")
     logger.info(f"PYTHONPATH: {os.environ.get('PYTHONPATH')}")
     
-    # Log all environment variables
+    # Log all environment variables for debugging
     logger.info("Environment variables:")
     for key, value in sorted(os.environ.items()):
         logger.info(f"  {key}: {value}")
@@ -41,20 +41,48 @@ def main():
         logger.error(f"❌ App import failed: {e}")
         sys.exit(1)
     
-    # Get port configuration
+    # Get port configuration with multiple strategies
+    port = None
+    
+    # Strategy 1: Direct environment variable
     port = os.environ.get('PORT')
+    if port:
+        logger.info(f"📡 PORT from environment: {port}")
+    
+    # Strategy 2: Check if PORT is literal '$PORT' string
+    if port == '$PORT':
+        logger.warning("⚠️  PORT is literal '$PORT' string - Railway environment expansion failed")
+        logger.info("Trying to get PORT from alternative sources...")
+        
+        # Try to get PORT from Railway's internal environment variables
+        railway_vars = ['RAILWAY_STATIC_URL', 'RAILWAY_PUBLIC_DOMAIN', 'PORT']
+        for var in railway_vars:
+            value = os.environ.get(var)
+            if value and ':' in value:
+                try:
+                    potential_port = value.split(':')[-1]
+                    if potential_port.isdigit():
+                        port = potential_port
+                        logger.info(f"📡 PORT extracted from {var}: {port}")
+                        break
+                except:
+                    continue
+        
+        # If still no valid port, use default
+        if not port or not port.isdigit():
+            logger.warning("⚠️  Could not extract valid PORT, using default 8000")
+            port = '8000'
+    
+    # Strategy 3: Validate and fallback
     if not port:
         logger.warning("⚠️  PORT environment variable is not set, using default port 8000")
         port = '8000'
+    elif not port.isdigit():
+        logger.error(f"❌ PORT is not a valid number: {port}")
+        logger.info("Using default port 8000")
+        port = '8000'
     else:
-        logger.info(f"📡 PORT environment variable found: {port}")
-        # Validate that PORT is a number
-        if not port.isdigit():
-            logger.error(f"❌ PORT is not a valid number: {port}")
-            logger.info("Using default port 8000")
-            port = '8000'
-        else:
-            logger.info(f"✅ PORT is valid: {port}")
+        logger.info(f"✅ PORT is valid: {port}")
     
     logger.info(f"🎯 Final port configuration: {port}")
     

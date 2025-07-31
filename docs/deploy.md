@@ -163,12 +163,12 @@ python scripts/diagnose.py
 ```
 
 This script tests:
-- ✅ All required dependencies are available
-- ✅ Configuration loading works correctly
-- ✅ App can be imported without errors
-- ✅ Health endpoints respond correctly
-- ✅ Port availability on different host addresses
-- ✅ Environment variable configuration
+- All required dependencies are available
+- Configuration loading works correctly
+- App can be imported without errors
+- Health endpoints respond correctly
+- Port availability on different host addresses
+- Environment variable configuration
 
 ### Healthcheck Scripts
 
