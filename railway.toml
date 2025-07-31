@@ -1,6 +1,9 @@
 [build]
 builder = "NIXPACKS"
 
+# Fallback start command
+startCommand = "python start_railway.py"
+
 [deploy]
 healthcheckPath = "/ping"
 healthcheckTimeout = 300
