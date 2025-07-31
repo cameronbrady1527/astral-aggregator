@@ -2,13 +2,8 @@
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
-# Alternative startup command that can be used if shell script fails
-# Uncomment the line below and comment out the CMD in Dockerfile if needed
-# Multiple startup options - uncomment the one you want to use
-startCommand = "python start_direct.py"
-# startCommand = "python start.py"
-# startCommand = "python start_simple.py"
-# startCommand = "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"
+# Use Railway-specific startup script with enhanced PORT handling
+startCommand = "python start_railway.py"
 
 [deploy]
 healthcheckPath = "/"

@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 
 # Make scripts executable
-RUN chmod +x start.sh start.py start_simple.py start_direct.py scripts/healthcheck.py scripts/healthcheck.sh scripts/simple_healthcheck.py scripts/diagnose.py scripts/deploy_debug.py
+RUN chmod +x start.sh start.py start_simple.py start_direct.py start_railway.py start_uvicorn.py scripts/healthcheck.py scripts/healthcheck.sh scripts/simple_healthcheck.py scripts/diagnose.py scripts/deploy_debug.py
 
 # Create output directory with proper permissions
 RUN mkdir -p output && chmod 755 output
@@ -38,5 +38,5 @@ RUN mkdir -p output && chmod 755 output
 EXPOSE 8000
 
 # Run the application with Railway-specific settings
-# Using direct Python startup script for maximum reliability
-CMD ["python", "start_direct.py"] 
+# Using Railway-specific startup script for maximum reliability
+CMD ["python", "start_railway.py"] 
