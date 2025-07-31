@@ -39,13 +39,6 @@ async def startup_event():
         print("✅ Listeners router included successfully")
     except Exception as e:
         print(f"⚠️ Listeners router not included: {e}")
-        # Create a simple fallback endpoint
-        @app.get("/api/listeners/status")
-        async def fallback_status():
-            return {
-                "status": "initializing",
-                "message": "System is starting up. Please try again in a moment."
-            }
     
     print("✅ Astral API startup complete!")
 
@@ -67,17 +60,13 @@ async def health_check():
 
 @app.get("/")
 async def root():
+    """Root endpoint - simplified for reliability."""
     print("📡 Root endpoint called")
     return {
         "status": "healthy",
         "service": "astral-api",
         "version": "0.0.1",
-        "message": "Welcome to the Astral API - Website Change Detection System",
-        "endpoints": {
-            "health_check": "/health",
-            "ping": "/ping",
-            "api_docs": "/docs"
-        }
+        "message": "Welcome to the Astral API - Website Change Detection System"
     }
 
 # Add a simple test endpoint
