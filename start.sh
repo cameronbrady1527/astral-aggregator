@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # Simple startup script for Railway deployment
-# CACHE BUSTER: Fixed PORT environment variable expansion issue
+# CACHE BUSTER: Enhanced PORT environment variable handling and debugging
 set -e
 
 echo "🚀 Starting Astral Aggregator..."
 echo "Current directory: $(pwd)"
 echo "Python version: $(python --version)"
-echo "PORT environment variable: ${PORT:-NOT SET}"
+echo "All environment variables:"
+env | sort
 
 # Set environment variables
 export PYTHONPATH=/app
@@ -26,9 +27,24 @@ python -c "import app.main; print('✅ App imported successfully')" || {
     exit 1
 }
 
-# Get the port with proper fallback
-PORT_NUM=${PORT:-8000}
-echo "Using port: $PORT_NUM"
+# Get the port with proper fallback and validation
+if [ -z "$PORT" ]; then
+    echo "⚠️  PORT environment variable is not set, using default port 8000"
+    PORT_NUM=8000
+else
+    echo "📡 PORT environment variable found: $PORT"
+    # Validate that PORT is a number
+    if [[ "$PORT" =~ ^[0-9]+$ ]]; then
+        PORT_NUM=$PORT
+        echo "✅ PORT is valid: $PORT_NUM"
+    else
+        echo "❌ PORT is not a valid number: $PORT"
+        echo "Using default port 8000"
+        PORT_NUM=8000
+    fi
+fi
+
+echo "🎯 Final port configuration: $PORT_NUM"
 
 # Start the application
 echo "Starting uvicorn server on port $PORT_NUM"
@@ -36,6 +52,6 @@ echo "Host: 0.0.0.0"
 
 exec uvicorn app.main:app \
     --host 0.0.0.0 \
-    --port $PORT_NUM \
+    --port "$PORT_NUM" \
     --workers 1 \
     --log-level info 

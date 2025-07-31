@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 
 # Make scripts executable
-RUN chmod +x start.sh scripts/healthcheck.py scripts/healthcheck.sh scripts/simple_healthcheck.py scripts/diagnose.py
+RUN chmod +x start.sh start.py scripts/healthcheck.py scripts/healthcheck.sh scripts/simple_healthcheck.py scripts/diagnose.py scripts/deploy_debug.py
 
 # Create output directory with proper permissions
 RUN mkdir -p output && chmod 755 output

@@ -2,6 +2,10 @@
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
+# Alternative startup command that can be used if shell script fails
+# Uncomment the line below and comment out the CMD in Dockerfile if needed
+# startCommand = "python start.py"
+
 [deploy]
 healthcheckPath = "/"
 healthcheckTimeout = 300
