@@ -8,12 +8,28 @@ import sys
 import os
 import requests
 import time
+import socket
+
+def is_port_open(port: int, host: str = 'localhost') -> bool:
+    """Check if a port is open and listening."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(5)
+            result = sock.connect_ex((host, port))
+            return result == 0
+    except Exception:
+        return False
 
 def check_health():
     """Check if the app is healthy."""
     try:
         # Get port from environment or use default
-        port = os.getenv('PORT', '8000')
+        port = int(os.getenv('PORT', '8000'))
+        
+        # First check if the port is open
+        if not is_port_open(port):
+            print(f"❌ Port {port} is not open")
+            return False
         
         # Try ping endpoint first (simpler)
         ping_url = f"http://localhost:{port}/ping"
@@ -53,6 +69,10 @@ def check_health():
     return False
 
 if __name__ == "__main__":
+    # Wait a bit for the app to start up
+    print("Waiting 30 seconds for app to start...")
+    time.sleep(30)
+    
     # Try multiple times with delays
     for attempt in range(5):
         print(f"Health check attempt {attempt + 1}/5")

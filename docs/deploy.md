@@ -15,15 +15,14 @@ This guide covers deploying the Astral Aggregator to Railway.
 Required variables for Railway:
 
 ```bash
-# Database (if using external PostgreSQL)
-DATABASE_URL=postgresql://user:pass@host:port/db
-
-# API Keys (if using external services)
+# API Keys (required for Firecrawl detection)
 FIRECRAWL_API_KEY=your_api_key_here
 
 # Optional: Logging
 LOG_LEVEL=INFO
 ```
+
+**Important**: The `FIRECRAWL_API_KEY` environment variable is required. If not set, the app will still start but Firecrawl detection will fail.
 
 ### Health Check Configuration
 
@@ -63,27 +62,36 @@ aggregator/
 - App appears to be running but health checks timeout
 
 **Solution**: 
-- The app now has multiple health check endpoints (`/ping` and `/health`)
-- Railway uses `/ping` as the primary health check (simpler)
-- Docker uses the custom health check script with more lenient settings
-- Check the Railway logs for detailed error messages
-- Health check timeout increased to 10 seconds
-- Start period increased to 5 minutes to allow for app initialization
+- ✅ **Fixed**: Added missing `requests` dependency to `requirements.txt`
+- ✅ **Fixed**: Updated configuration to use environment variables properly
+- ✅ **Fixed**: Improved healthcheck script with better error handling
+- ✅ **Fixed**: Increased healthcheck timeouts and start periods
+- ✅ **Fixed**: Added graceful error handling in health endpoints
+- ✅ **Fixed**: Improved startup script with configuration validation
+
+**Recent Health Check Improvements:**
+- Added missing `requests>=2.31.0` dependency
+- Updated config to use `${FIRECRAWL_API_KEY}` environment variable
+- Increased Railway healthcheck timeout to 600 seconds
+- Increased Docker healthcheck start period to 10 minutes
+- Added port availability checking in healthcheck script
+- Added 30-second startup delay in healthcheck script
+- Improved error handling in all health endpoints
+- Added configuration validation in startup script
 
 #### 2. Build Failures
 **Problem**: Docker build fails
 **Solution**: 
 - Check the build logs in Railway dashboard
-- Ensure all dependencies are in `requirements.txt`
+- Ensure all dependencies are in `requirements.txt` (now includes `requests`)
 - Verify the Dockerfile syntax
 - The startup script provides detailed debugging information
 
 #### 3. Environment Variables
 **Problem**: App can't find required variables
 **Solution**:
-- Double-check all variables are set in Railway dashboard
-- Ensure variable names match exactly (case-sensitive)
-- Restart the service after adding variables
+- Set `FIRECRAWL_API_KEY` in Railway dashboard
+- The app will start even without the API key (Firecrawl detection will just fail)
 - Check the startup logs for variable loading
 
 #### 4. Port Issues
@@ -130,17 +138,25 @@ If health checks are failing:
 
 1. **Check Railway Logs**: Look for startup errors
 2. **Test Endpoints Manually**: Visit `/ping` and `/health` in browser
-3. **Check Environment Variables**: Ensure `PORT` is set correctly
+3. **Check Environment Variables**: Ensure `FIRECRAWL_API_KEY` is set
 4. **Review Startup Script**: The script provides detailed debugging output
 5. **Use Local Test Script**: Run `python tests/test_healthcheck.py` after starting the app locally
+6. **Run Deployment Test**: Use `python test_deployment.py` to verify all components
 
-**Recent Health Check Improvements:**
-- Increased timeout from 5 to 10 seconds
-- Added more detailed error logging
-- Increased start period to 5 minutes
-- Reduced retry attempts but increased wait time between retries
-- Better error messages and debugging output
-- Reorganized file structure for better organization
+### Pre-Deployment Testing
+
+Before deploying, you can run the deployment test script to verify everything works:
+
+```bash
+python test_deployment.py
+```
+
+This script tests:
+- ✅ All required dependencies are available
+- ✅ Configuration loading works correctly
+- ✅ App can be imported without errors
+- ✅ Health endpoints respond correctly
+- ✅ Healthcheck script runs without crashing
 
 ## Cost Optimization
 
