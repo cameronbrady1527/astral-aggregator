@@ -38,9 +38,5 @@ RUN mkdir -p output && chmod 755 output
 # Expose port (Railway will override this)
 EXPOSE 8000
 
-# Health check with very lenient settings for Railway
-HEALTHCHECK --interval=180s --timeout=60s --start-period=900s --retries=5 \
-    CMD python scripts/simple_healthcheck.py
-
 # Run the application with Railway-specific settings
 CMD ["./start.sh"] 
