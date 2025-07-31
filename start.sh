@@ -31,6 +31,10 @@ if [ ! -f "config/sites.yaml" ]; then
     cp config/sites.yaml.example config/sites.yaml
 fi
 
+# Run diagnostics for debugging
+echo "Running diagnostics..."
+python scripts/diagnose.py || echo "Diagnostics failed, continuing..."
+
 # Test that the app can be imported
 echo "Testing app import..."
 python -c "import app.main; print('App imported successfully')" || {

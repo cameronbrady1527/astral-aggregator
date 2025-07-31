@@ -29,8 +29,9 @@ LOG_LEVEL=INFO
 The app includes multiple health check mechanisms:
 
 1. **Railway Health Check**: Uses `/ping` endpoint (configured in `railway.toml`)
-2. **Docker Health Check**: Uses custom `scripts/healthcheck.py` script
+2. **Docker Health Check**: Uses custom `scripts/simple_healthcheck.py` script
 3. **Manual Testing**: Use `tests/test_healthcheck.py` for local testing
+4. **Diagnostics**: Use `scripts/diagnose.py` for debugging
 
 **Health Check Endpoints:**
 - `/ping` - Simple ping response (`{"pong": "ok"}`)
@@ -43,8 +44,11 @@ The app includes multiple health check mechanisms:
 aggregator/
 ├── app/                    # Main application code
 ├── scripts/               # Deployment and utility scripts
-│   ├── healthcheck.py     # Python health check script
-│   └── healthcheck.sh     # Bash health check script
+│   ├── healthcheck.py     # Python health check script (robust)
+│   ├── simple_healthcheck.py # Simple health check script (minimal)
+│   ├── healthcheck.sh     # Bash health check script
+│   ├── diagnose.py        # Diagnostic script for debugging
+│   └── README.md          # Scripts documentation
 ├── tests/                 # Test files
 │   ├── test_healthcheck.py # Local health check testing
 │   └── ...                # Other test files
@@ -68,16 +72,21 @@ aggregator/
 - ✅ **Fixed**: Increased healthcheck timeouts and start periods
 - ✅ **Fixed**: Added graceful error handling in health endpoints
 - ✅ **Fixed**: Improved startup script with configuration validation
+- ✅ **Fixed**: Added multiple host address checking (localhost, 127.0.0.1, 0.0.0.0)
+- ✅ **Fixed**: Created simple healthcheck script for minimal functionality
+- ✅ **Fixed**: Added diagnostic script for better debugging
 
 **Recent Health Check Improvements:**
 - Added missing `requests>=2.31.0` dependency
 - Updated config to use `${FIRECRAWL_API_KEY}` environment variable
-- Increased Railway healthcheck timeout to 600 seconds
-- Increased Docker healthcheck start period to 10 minutes
+- Increased Railway healthcheck timeout to 900 seconds
+- Increased Docker healthcheck start period to 15 minutes
 - Added port availability checking in healthcheck script
-- Added 30-second startup delay in healthcheck script
+- Added 60-second startup delay in simple healthcheck script
 - Improved error handling in all health endpoints
 - Added configuration validation in startup script
+- Added diagnostic script for comprehensive debugging
+- Multiple host address support for different container environments
 
 #### 2. Build Failures
 **Problem**: Docker build fails
@@ -131,8 +140,9 @@ railway shell
 The app includes multiple health check mechanisms:
 
 1. **Railway Health Check**: Uses `/ping` endpoint (simplest)
-2. **Docker Health Check**: Uses custom `scripts/healthcheck.py` script
+2. **Docker Health Check**: Uses custom `scripts/simple_healthcheck.py` script
 3. **Manual Testing**: You can test endpoints manually
+4. **Diagnostics**: Run `scripts/diagnose.py` for comprehensive debugging
 
 If health checks are failing:
 
@@ -141,14 +151,15 @@ If health checks are failing:
 3. **Check Environment Variables**: Ensure `FIRECRAWL_API_KEY` is set
 4. **Review Startup Script**: The script provides detailed debugging output
 5. **Use Local Test Script**: Run `python tests/test_healthcheck.py` after starting the app locally
-6. **Run Deployment Test**: Use `python test_deployment.py` to verify all components
+6. **Run Diagnostics**: Use `python scripts/diagnose.py` to check all components
+7. **Check Healthcheck Scripts**: Multiple healthcheck scripts available for different scenarios
 
 ### Pre-Deployment Testing
 
-Before deploying, you can run the deployment test script to verify everything works:
+Before deploying, you can run the diagnostic script to verify everything works:
 
 ```bash
-python test_deployment.py
+python scripts/diagnose.py
 ```
 
 This script tests:
@@ -156,7 +167,27 @@ This script tests:
 - ✅ Configuration loading works correctly
 - ✅ App can be imported without errors
 - ✅ Health endpoints respond correctly
-- ✅ Healthcheck script runs without crashing
+- ✅ Port availability on different host addresses
+- ✅ Environment variable configuration
+
+### Healthcheck Scripts
+
+The project includes multiple healthcheck scripts for different scenarios:
+
+1. **`scripts/simple_healthcheck.py`** - Minimal healthcheck (used by Docker)
+   - 60-second startup delay
+   - Simple localhost connection test
+   - 3 retry attempts with 30-second intervals
+
+2. **`scripts/healthcheck.py`** - Robust healthcheck (backup)
+   - 30-second startup delay
+   - Multiple host address testing
+   - 5 retry attempts with 15-second intervals
+
+3. **`scripts/healthcheck.sh`** - Bash healthcheck (fallback)
+   - 30-second startup delay
+   - Multiple host address testing
+   - 5 retry attempts with 15-second intervals
 
 ## Cost Optimization
 

@@ -26,46 +26,54 @@ def check_health():
         # Get port from environment or use default
         port = int(os.getenv('PORT', '8000'))
         
-        # First check if the port is open
-        if not is_port_open(port):
-            print(f"❌ Port {port} is not open")
-            return False
+        # Try multiple host addresses for Railway
+        hosts = ['localhost', '127.0.0.1', '0.0.0.0']
         
-        # Try ping endpoint first (simpler)
-        ping_url = f"http://localhost:{port}/ping"
-        print(f"Checking ping at: {ping_url}")
-        
-        response = requests.get(ping_url, timeout=10)
-        print(f"Ping response status: {response.status_code}")
-        print(f"Ping response content: {response.text}")
-        
-        if response.status_code == 200:
-            print("✅ Ping check passed")
-            return True
-        
-        # If ping fails, try root endpoint
-        root_url = f"http://localhost:{port}/"
-        print(f"Checking root at: {root_url}")
-        
-        response = requests.get(root_url, timeout=10)
-        print(f"Root response status: {response.status_code}")
-        print(f"Root response content: {response.text[:200]}...")
-        
-        if response.status_code == 200:
-            print("✅ Root check passed")
-            return True
+        for host in hosts:
+            print(f"Trying host: {host}")
             
-    except requests.exceptions.ConnectionError as e:
-        print(f"❌ Health check failed: connection error - {e}")
-        return False
-    except requests.exceptions.Timeout as e:
-        print(f"❌ Health check failed: timeout - {e}")
-        return False
+            # First check if the port is open
+            if not is_port_open(port, host):
+                print(f"❌ Port {port} is not open on {host}")
+                continue
+            
+            # Try ping endpoint first (simpler)
+            ping_url = f"http://{host}:{port}/ping"
+            print(f"Checking ping at: {ping_url}")
+            
+            try:
+                response = requests.get(ping_url, timeout=10)
+                print(f"Ping response status: {response.status_code}")
+                print(f"Ping response content: {response.text}")
+                
+                if response.status_code == 200:
+                    print("✅ Ping check passed")
+                    return True
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Ping failed on {host}: {e}")
+                continue
+            
+            # If ping fails, try root endpoint
+            root_url = f"http://{host}:{port}/"
+            print(f"Checking root at: {root_url}")
+            
+            try:
+                response = requests.get(root_url, timeout=10)
+                print(f"Root response status: {response.status_code}")
+                print(f"Root response content: {response.text[:200]}...")
+                
+                if response.status_code == 200:
+                    print("✅ Root check passed")
+                    return True
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Root failed on {host}: {e}")
+                continue
+            
     except Exception as e:
         print(f"❌ Health check failed: {e}")
         return False
     
-    print("❌ Health check failed: unexpected response")
+    print("❌ Health check failed: no endpoints responded")
     return False
 
 if __name__ == "__main__":

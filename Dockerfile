@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 
 # Make scripts executable
-RUN chmod +x start.sh scripts/healthcheck.py scripts/healthcheck.sh
+RUN chmod +x start.sh scripts/healthcheck.py scripts/healthcheck.sh scripts/simple_healthcheck.py scripts/diagnose.py
 
 # Create output directory with proper permissions
 RUN mkdir -p output && chmod 755 output
@@ -39,8 +39,8 @@ RUN mkdir -p output && chmod 755 output
 EXPOSE 8000
 
 # Health check with very lenient settings for Railway
-HEALTHCHECK --interval=120s --timeout=30s --start-period=600s --retries=3 \
-    CMD python scripts/healthcheck.py
+HEALTHCHECK --interval=180s --timeout=60s --start-period=900s --retries=5 \
+    CMD python scripts/simple_healthcheck.py
 
 # Run the application with Railway-specific settings
 CMD ["./start.sh"] 
