@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Simple startup script for Railway deployment
+# CACHE BUSTER: Fixed PORT environment variable expansion issue
 set -e
 
 echo "🚀 Starting Astral Aggregator..."

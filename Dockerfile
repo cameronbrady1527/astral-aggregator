@@ -7,8 +7,7 @@ WORKDIR /app
 # Set environment variables for Railway
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
-    PORT=8000
+    PYTHONPATH=/app
 
 # Install system dependencies
 RUN apt-get update \
