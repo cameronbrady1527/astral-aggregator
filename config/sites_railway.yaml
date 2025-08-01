@@ -1,0 +1,28 @@
+# ==============================================================================
+# sites_railway.yaml — Railway-Optimized Configuration
+# ==============================================================================
+# Purpose: Lightweight configuration for Railway deployment
+# ==============================================================================
+
+sites:
+  waverley_gov:
+    name: 'Waverley Borough Council'
+    url: 'https://www.waverley.gov.uk/'
+    sitemap_url: 'https://www.waverley.gov.uk/sitemap.xml'
+    detection_methods: ['sitemap']  # Use only sitemap for Railway (lighter)
+    check_interval_minutes: 1440
+    is_active: true
+    # Disable heavy operations for Railway
+    enable_content_detection: false
+    max_content_pages: 5  # Reduced for Railway
+    content_timeout: 5  # Shorter timeout
+
+firecrawl:
+  api_key: 'fc-d05a9a8caa794106ae7c17d9e5b688f5'
+  base_url: 'https://api.firecrawl.dev'
+
+system:
+  output_directory: 'output'
+  log_level: 'INFO'
+  max_retries: 2  # Reduced for Railway
+  timeout_seconds: 15  # Shorter timeout for Railway 

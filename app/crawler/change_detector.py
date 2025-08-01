@@ -13,6 +13,7 @@
 import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+import os
 
 # Internal -----
 from .base_detector import BaseDetector, ChangeResult
@@ -32,8 +33,12 @@ __all__ = ['ChangeDetector']
 class ChangeDetector:
     """Main orchestrator for change detection across multiple sites and methods."""
     
-    def __init__(self, config_file: str = "config/sites.yaml"):
+    def __init__(self, config_file: str = None):
         """Initialize the change detector."""
+        # Use environment variable for config file if set (Railway deployment)
+        if config_file is None:
+            config_file = os.environ.get('CONFIG_FILE', "config/sites.yaml")
+        
         self.config_manager = ConfigManager(config_file)
         self.writer = ChangeDetectionWriter()
         self.firecrawl_config = self.config_manager.get_firecrawl_config()

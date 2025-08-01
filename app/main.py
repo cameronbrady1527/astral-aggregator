@@ -38,6 +38,12 @@ async def startup_event():
     print(f"PYTHONPATH environment variable: {os.getenv('PYTHONPATH', 'NOT SET')}")
     print(f"Current working directory: {os.getcwd()}")
     
+    # Set Railway-specific configuration if in Railway environment
+    if os.environ.get('RAILWAY_ENVIRONMENT'):
+        print("📍 Railway environment detected - using optimized configuration")
+        os.environ['CONFIG_FILE'] = 'config/sites_railway.yaml'
+        print("✅ Railway configuration set")
+    
     # Try to include routers (but don't fail if they don't work)
     try:
         print("Attempting to load routers...")
@@ -133,7 +139,8 @@ async def debug_info():
             "pythonpath": os.environ.get('PYTHONPATH', 'NOT SET'),
             "port": os.environ.get('PORT', 'NOT SET'),
             "railway_environment": os.environ.get('RAILWAY_ENVIRONMENT', 'NOT SET'),
-            "railway_public_domain": os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'NOT SET')
+            "railway_public_domain": os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'NOT SET'),
+            "config_file": os.environ.get('CONFIG_FILE', 'config/sites.yaml')
         },
         "available_modules": {
             "fastapi": "fastapi" in sys.modules,

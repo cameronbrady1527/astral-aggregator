@@ -49,6 +49,13 @@ def main():
     
     os.environ['PYTHONUNBUFFERED'] = '1'
     
+    # Railway-specific environment variables
+    if is_railway:
+        os.environ['LOG_LEVEL'] = 'INFO'
+        os.environ['PYTHONHASHSEED'] = 'random'
+        os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+        logger.info("✅ Railway environment variables set")
+    
     # Create output directory
     try:
         os.makedirs('output', exist_ok=True)
@@ -75,14 +82,17 @@ def main():
     
     # Build uvicorn command with environment-specific settings
     if is_railway:
-        # Railway-optimized settings
+        # Railway-optimized settings - minimal and reliable
         cmd = [
             sys.executable, '-m', 'uvicorn',
             'app.main:app',
             '--host', '0.0.0.0',
             '--port', port,
             '--workers', '1',
-            '--log-level', 'info'
+            '--log-level', 'info',
+            '--timeout-keep-alive', '5',
+            '--limit-concurrency', '50',
+            '--limit-max-requests', '500'
         ]
     else:
         # Local development settings with more features

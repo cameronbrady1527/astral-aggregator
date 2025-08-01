@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Railway-specific healthcheck script
+Optimized for Railway deployment environment
 """
 
 import os
@@ -20,7 +21,7 @@ def check_health():
         print(f"Checking ping at: {ping_url}")
         
         try:
-            with urllib.request.urlopen(ping_url, timeout=10) as response:
+            with urllib.request.urlopen(ping_url, timeout=5) as response:
                 if response.getcode() == 200:
                     print("✅ Ping check passed")
                     return True
@@ -35,7 +36,7 @@ def check_health():
             print(f"Trying health endpoint: {health_url}")
             
             try:
-                with urllib.request.urlopen(health_url, timeout=10) as response:
+                with urllib.request.urlopen(health_url, timeout=5) as response:
                     if response.getcode() == 200:
                         print("✅ Health check passed")
                         return True
@@ -53,22 +54,25 @@ def check_health():
 def main():
     """Main healthcheck function."""
     print("🔍 Railway Healthcheck Starting...")
+    print(f"Environment: {os.environ.get('RAILWAY_ENVIRONMENT', 'unknown')}")
+    print(f"Port: {os.environ.get('PORT', '8000')}")
+    print(f"Python version: {sys.version}")
     
     # Wait a bit for app to start
-    print("Waiting 30 seconds for app to start...")
-    time.sleep(30)
+    print("Waiting 60 seconds for app to start...")
+    time.sleep(60)
     
     # Try multiple times
-    for attempt in range(5):
-        print(f"Health check attempt {attempt + 1}/5")
+    for attempt in range(3):
+        print(f"Health check attempt {attempt + 1}/3")
         
         if check_health():
             print("✅ Health check successful")
             sys.exit(0)
         
-        if attempt < 4:  # Don't sleep after last attempt
-            print("Waiting 15 seconds before retry...")
-            time.sleep(15)
+        if attempt < 2:  # Don't sleep after last attempt
+            print("Waiting 30 seconds before retry...")
+            time.sleep(30)
     
     print("❌ All health check attempts failed")
     sys.exit(1)
