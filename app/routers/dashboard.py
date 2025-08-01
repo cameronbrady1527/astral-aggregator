@@ -36,6 +36,8 @@ async def dashboard():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Astral - Website Change Detection Dashboard</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
         <style>
             * {
                 margin: 0;
@@ -52,7 +54,7 @@ async def dashboard():
             }
             
             .container {
-                max-width: 1400px;
+                max-width: 1600px;
                 margin: 0 auto;
                 padding: 20px;
             }
@@ -76,9 +78,40 @@ async def dashboard():
                 font-weight: 300;
             }
             
+            .status-bar {
+                background: rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 30px;
+                color: white;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 20px;
+            }
+            
+            .status-item {
+                text-align: center;
+            }
+            
+            .status-number {
+                font-size: 2rem;
+                font-weight: 700;
+                display: block;
+            }
+            
+            .status-label {
+                font-size: 0.9rem;
+                opacity: 0.8;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            
             .dashboard-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
                 gap: 25px;
                 margin-bottom: 30px;
             }
@@ -204,82 +237,150 @@ async def dashboard():
                 box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
             }
             
-            .btn:disabled {
-                opacity: 0.6;
-                cursor: not-allowed;
-                transform: none !important;
+            .btn-warning {
+                background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+                color: #212529;
+                box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3);
             }
             
-            .results-section {
-                background: white;
-                border-radius: 12px;
-                padding: 30px;
-                box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-                margin-top: 25px;
-                border: 1px solid rgba(255,255,255,0.2);
+            .btn-warning:hover {
+                background: linear-gradient(135deg, #e0a800 0%, #d39e00 100%);
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4);
             }
             
-            .results-section h3 {
-                color: #667eea;
-                margin-bottom: 25px;
-                font-size: 1.4rem;
-                font-weight: 600;
-                display: flex;
-                align-items: center;
-                gap: 10px;
+            .site-list {
+                margin-top: 20px;
             }
             
-            .change-item {
-                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            .site-item {
+                background: #f8f9fa;
                 border-radius: 8px;
                 padding: 20px;
                 margin-bottom: 15px;
-                border-left: 4px solid #28a745;
-                transition: all 0.2s ease;
+                border-left: 4px solid #667eea;
+                transition: all 0.3s ease;
             }
             
-            .change-item:hover {
+            .site-item:hover {
+                background: #e9ecef;
                 transform: translateX(5px);
-                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             }
             
-            .change-item.deleted {
-                border-left-color: #dc3545;
-                background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+            .site-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
             }
             
-            .change-item.new {
-                border-left-color: #28a745;
-                background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-            }
-            
-            .change-url {
+            .site-name {
                 font-weight: 600;
-                color: #333;
-                margin-bottom: 8px;
+                color: #495057;
                 font-size: 1.1rem;
             }
             
-            .change-type {
-                font-size: 0.85rem;
-                color: #6c757d;
-                text-transform: uppercase;
+            .site-status {
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 0.8rem;
                 font-weight: 600;
+                text-transform: uppercase;
+            }
+            
+            .status-active {
+                background: #d4edda;
+                color: #155724;
+            }
+            
+            .status-inactive {
+                background: #f8d7da;
+                color: #721c24;
+            }
+            
+            .site-details {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+                gap: 15px;
+                font-size: 0.9rem;
+            }
+            
+            .detail-item {
+                text-align: center;
+            }
+            
+            .detail-value {
+                font-weight: 600;
+                color: #667eea;
+                font-size: 1.1rem;
+            }
+            
+            .detail-label {
+                color: #6c757d;
+                font-size: 0.8rem;
+                text-transform: uppercase;
                 letter-spacing: 0.5px;
+            }
+            
+            .chart-container {
+                position: relative;
+                height: 300px;
+                margin-top: 20px;
+            }
+            
+            .recent-changes {
+                max-height: 400px;
+                overflow-y: auto;
+            }
+            
+            .change-item {
+                background: #f8f9fa;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 10px;
+                border-left: 4px solid #28a745;
+                transition: all 0.3s ease;
+            }
+            
+            .change-item:hover {
+                background: #e9ecef;
+                transform: translateX(5px);
+            }
+            
+            .change-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 8px;
+            }
+            
+            .change-site {
+                font-weight: 600;
+                color: #495057;
+            }
+            
+            .change-time {
+                font-size: 0.8rem;
+                color: #6c757d;
+            }
+            
+            .change-summary {
+                font-size: 0.9rem;
+                color: #6c757d;
             }
             
             .loading {
                 text-align: center;
-                padding: 50px;
+                padding: 40px;
                 color: #6c757d;
             }
             
             .spinner {
-                border: 3px solid #f3f3f3;
-                border-top: 3px solid #667eea;
+                border: 4px solid #f3f3f3;
+                border-top: 4px solid #667eea;
                 border-radius: 50%;
-                width: 50px;
-                height: 50px;
+                width: 40px;
+                height: 40px;
                 animation: spin 1s linear infinite;
                 margin: 0 auto 20px;
             }
@@ -289,263 +390,401 @@ async def dashboard():
                 100% { transform: rotate(360deg); }
             }
             
-            .status-indicator {
-                display: inline-block;
-                width: 12px;
-                height: 12px;
-                border-radius: 50%;
-                margin-right: 8px;
-                animation: pulse 2s infinite;
+            .error {
+                background: #f8d7da;
+                color: #721c24;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 20px 0;
+                border-left: 4px solid #dc3545;
             }
             
-            .status-online {
-                background: #28a745;
+            .success {
+                background: #d4edda;
+                color: #155724;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 20px 0;
+                border-left: 4px solid #28a745;
             }
             
-            .status-offline {
-                background: #dc3545;
+            .tabs {
+                display: flex;
+                margin-bottom: 20px;
+                border-bottom: 2px solid #e9ecef;
             }
             
-            @keyframes pulse {
-                0% { opacity: 1; }
-                50% { opacity: 0.5; }
-                100% { opacity: 1; }
+            .tab {
+                padding: 12px 24px;
+                cursor: pointer;
+                border-bottom: 2px solid transparent;
+                transition: all 0.3s ease;
+                font-weight: 600;
             }
             
-            .notification {
+            .tab.active {
+                border-bottom-color: #667eea;
+                color: #667eea;
+            }
+            
+            .tab:hover {
+                background: #f8f9fa;
+            }
+            
+            .tab-content {
+                display: none;
+            }
+            
+            .tab-content.active {
+                display: block;
+            }
+            
+            .refresh-indicator {
                 position: fixed;
                 top: 20px;
                 right: 20px;
-                padding: 20px;
+                background: rgba(255,255,255,0.9);
+                padding: 10px 15px;
                 border-radius: 8px;
-                color: white;
-                font-weight: 600;
-                z-index: 1000;
-                max-width: 400px;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-                transform: translateX(100%);
-                transition: transform 0.3s ease;
-            }
-            
-            .notification.show {
-                transform: translateX(0);
-            }
-            
-            .notification.success {
-                background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-            }
-            
-            .notification.error {
-                background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            }
-            
-            .progress-bar {
-                width: 100%;
-                height: 4px;
-                background: #e9ecef;
-                border-radius: 2px;
-                overflow: hidden;
-                margin-top: 10px;
-            }
-            
-            .progress-fill {
-                height: 100%;
-                background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-                width: 0%;
-                transition: width 0.3s ease;
-            }
-            
-            .activity-indicator {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                padding: 8px 16px;
-                background: rgba(102, 126, 234, 0.1);
-                border-radius: 20px;
-                color: #667eea;
                 font-size: 0.9rem;
-                font-weight: 500;
-            }
-            
-            .activity-spinner {
-                width: 16px;
-                height: 16px;
-                border: 2px solid #667eea;
-                border-top: 2px solid transparent;
-                border-radius: 50%;
-                animation: spin 1s linear infinite;
+                color: #667eea;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                z-index: 1000;
+                display: none;
             }
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
-                <h1>Astral</h1>
+                <h1>🌌 Astral</h1>
                 <p>Website Change Detection Dashboard</p>
             </div>
             
-            <div class="dashboard-grid">
-                <div class="card">
-                    <h3>
-                        <span class="card-icon">📊</span>
-                        System Status
-                    </h3>
-                    <div id="system-status">
-                        <div class="loading">
-                            <div class="spinner"></div>
-                            <div>Loading system status...</div>
-                        </div>
-                    </div>
+            <div class="refresh-indicator" id="refreshIndicator">
+                🔄 Auto-refreshing every 30 seconds
+            </div>
+            
+            <div class="status-bar" id="statusBar">
+                <div class="status-item">
+                    <span class="status-number" id="totalSites">-</span>
+                    <span class="status-label">Sites</span>
                 </div>
-                
-                <div class="card">
-                    <h3>
-                        <span class="card-icon">🎯</span>
-                        Quick Actions
-                    </h3>
-                    <div class="actions">
-                        <button class="btn btn-primary" onclick="triggerDetection('waverley_gov')">
-                            <span>🔍</span>
-                            Check Waverley
-                        </button>
-                        <button class="btn btn-primary" onclick="triggerDetection('judiciary_uk')">
-                            <span>⚖️</span>
-                            Check Judiciary UK
-                        </button>
-                        <button class="btn btn-success" onclick="triggerDetection('all')">
-                            <span>🔄</span>
-                            Check All Sites
-                        </button>
-                        <button class="btn btn-secondary" onclick="loadRecentChanges()">
-                            <span>📋</span>
-                            Recent Changes
-                        </button>
-                    </div>
+                <div class="status-item">
+                    <span class="status-number" id="totalUrls">-</span>
+                    <span class="status-label">URLs Monitored</span>
                 </div>
-                
-                <div class="card">
-                    <h3>
-                        <span class="card-icon">📈</span>
-                        Performance
-                    </h3>
-                    <div class="stats-grid">
-                        <div class="stat">
-                            <div class="stat-number" id="total-urls">-</div>
-                            <div class="stat-label">Total URLs</div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-number" id="detection-time">-</div>
-                            <div class="stat-label">Detection Time</div>
-                        </div>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progress-bar"></div>
-                    </div>
+                <div class="status-item">
+                    <span class="status-number" id="totalChanges">-</span>
+                    <span class="status-label">Changes Detected</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-number" id="lastUpdate">-</span>
+                    <span class="status-label">Last Update</span>
                 </div>
             </div>
             
-            <div class="results-section">
-                <h3>
-                    <span class="card-icon">📋</span>
-                    Recent Changes
-                </h3>
-                <div id="changes-results">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <div>Loading recent changes...</div>
+            <div class="dashboard-grid">
+                <!-- Real-time Monitoring -->
+                <div class="card">
+                    <h3><span class="card-icon">📡</span> Real-time Monitoring</h3>
+                    <div id="realtimeContent">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            Loading real-time data...
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- System Analytics -->
+                <div class="card">
+                    <h3><span class="card-icon">📊</span> System Analytics</h3>
+                    <div id="analyticsContent">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            Loading analytics...
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Changes -->
+                <div class="card">
+                    <h3><span class="card-icon">🔄</span> Recent Changes</h3>
+                    <div id="recentChangesContent">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            Loading recent changes...
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Historical Trends -->
+                <div class="card">
+                    <h3><span class="card-icon">📈</span> Historical Trends</h3>
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('urls')">URL Growth</div>
+                        <div class="tab" onclick="switchTab('changes')">Change Activity</div>
+                    </div>
+                    <div id="urlsTab" class="tab-content active">
+                        <div class="chart-container">
+                            <canvas id="urlsChart"></canvas>
+                        </div>
+                    </div>
+                    <div id="changesTab" class="tab-content">
+                        <div class="chart-container">
+                            <canvas id="changesChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Site Management -->
+                <div class="card">
+                    <h3><span class="card-icon">⚙️</span> Site Management</h3>
+                    <div class="actions">
+                        <button class="btn btn-success" onclick="triggerAllSites()">
+                            🚀 Trigger All Sites
+                        </button>
+                        <button class="btn btn-primary" onclick="refreshData()">
+                            🔄 Refresh Data
+                        </button>
+                    </div>
+                    <div id="siteManagementContent">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            Loading site data...
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Detailed Analytics -->
+                <div class="card">
+                    <h3><span class="card-icon">🔍</span> Detailed Analytics</h3>
+                    <div id="detailedAnalyticsContent">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            Loading detailed analytics...
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
         
         <script>
-            // Load initial data
+            let refreshInterval;
+            let urlsChart, changesChart;
+            
+            // Initialize dashboard
             document.addEventListener('DOMContentLoaded', function() {
-                loadSystemStatus();
-                loadRecentChanges();
+                loadAllData();
+                startAutoRefresh();
             });
             
-            async function loadSystemStatus() {
+            function startAutoRefresh() {
+                refreshInterval = setInterval(() => {
+                    showRefreshIndicator();
+                    loadAllData();
+                }, 30000); // Refresh every 30 seconds
+            }
+            
+            function showRefreshIndicator() {
+                const indicator = document.getElementById('refreshIndicator');
+                indicator.style.display = 'block';
+                setTimeout(() => {
+                    indicator.style.display = 'none';
+                }, 3000);
+            }
+            
+            async function loadAllData() {
                 try {
-                    const response = await fetch('/api/listeners/status');
-                    const data = await response.json();
-                    
-                    document.getElementById('system-status').innerHTML = `
-                        <div class="activity-indicator">
-                            <div class="status-indicator status-online"></div>
-                            <span>System Online</span>
-                        </div>
-                        <div style="margin-top: 15px; color: #6c757d; font-size: 0.9rem;">
-                            Service: ${data.service || 'astral-api'}<br>
-                            Version: ${data.version || '0.0.1'}
-                        </div>
-                    `;
+                    await Promise.all([
+                        loadStatusBar(),
+                        loadRealtimeData(),
+                        loadAnalytics(),
+                        loadRecentChanges(),
+                        loadSiteManagement(),
+                        loadDetailedAnalytics(),
+                        loadHistoricalData(),
+                        loadDetectionProgress()
+                    ]);
                 } catch (error) {
-                    document.getElementById('system-status').innerHTML = `
-                        <div class="activity-indicator">
-                            <div class="status-indicator status-offline"></div>
-                            <span>System Error</span>
-                        </div>
-                        <div style="margin-top: 15px; color: #dc3545; font-size: 0.9rem;">
-                            ${error.message}
-                        </div>
-                    `;
+                    console.error('Error loading data:', error);
                 }
             }
             
-            async function triggerDetection(siteId) {
-                const button = event.target;
-                const originalText = button.innerHTML;
-                
-                // Show activity indicator
-                button.innerHTML = `
-                    <div class="activity-spinner"></div>
-                    <span>Running...</span>
-                `;
-                button.disabled = true;
-                
-                // Show progress bar
-                const progressBar = document.getElementById('progress-bar');
-                progressBar.style.width = '0%';
-                
-                // Simulate progress
-                const progressInterval = setInterval(() => {
-                    const currentWidth = parseInt(progressBar.style.width) || 0;
-                    if (currentWidth < 90) {
-                        progressBar.style.width = (currentWidth + 10) + '%';
-                    }
-                }, 200);
-                
+            async function loadDetectionProgress() {
                 try {
-                    const response = await fetch(`/api/listeners/trigger/${siteId}`, {
-                        method: 'POST'
-                    });
+                    const response = await fetch('/api/listeners/progress');
+                    const data = await response.json();
                     
-                    clearInterval(progressInterval);
-                    progressBar.style.width = '100%';
+                    const progressContainer = document.getElementById('detection-progress');
+                    if (!progressContainer) {
+                        // Create progress container if it doesn't exist
+                        const container = document.querySelector('.container');
+                        const progressDiv = document.createElement('div');
+                        progressDiv.id = 'detection-progress';
+                        progressDiv.style.display = 'none';
+                        container.insertBefore(progressDiv, container.firstChild);
+                    }
                     
-                    if (response.ok) {
-                        const data = await response.json();
-                        showNotification(`Detection completed for ${siteId}!`, 'success');
-                        loadRecentChanges();
-                        updatePerformanceStats(data);
-                        
-                        // Reset progress bar after delay
-                        setTimeout(() => {
-                            progressBar.style.width = '0%';
-                        }, 2000);
+                    if (data.detection_status.is_running) {
+                        progressContainer.style.display = 'block';
+                        progressContainer.innerHTML = `
+                            <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4 rounded">
+                                <div class="flex">
+                                    <div class="flex-shrink-0">
+                                        <svg class="h-5 w-5 text-blue-400 animate-spin" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div class="ml-3">
+                                        <h3 class="text-sm font-medium text-blue-800">
+                                            🔄 Detection in Progress: ${data.detection_status.current_site}
+                                        </h3>
+                                        <div class="mt-2 text-sm text-blue-700">
+                                            <p>${data.detection_status.message}</p>
+                                            <div class="mt-2">
+                                                <div class="bg-blue-200 rounded-full h-2">
+                                                    <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: ${data.detection_status.progress}%"></div>
+                                                </div>
+                                                <p class="mt-1 text-xs">${data.detection_status.progress}% complete</p>
+                                                ${data.detection_status.elapsed_time ? `<p class="text-xs">Elapsed: ${data.detection_status.elapsed_time}</p>` : ''}
+                                                ${data.detection_status.estimated_time_remaining ? `<p class="text-xs">ETA: ${data.detection_status.estimated_time_remaining}</p>` : ''}
+                                                ${data.detection_status.current_method ? `<p class="text-xs">Method: ${data.detection_status.current_method}</p>` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
                     } else {
-                        const error = await response.json();
-                        showNotification(`Detection failed: ${error.detail || 'Unknown error'}`, 'error');
-                        progressBar.style.width = '0%';
+                        progressContainer.style.display = 'none';
                     }
                 } catch (error) {
-                    clearInterval(progressInterval);
-                    progressBar.style.width = '0%';
-                    showNotification(`Network error: ${error.message}`, 'error');
-                } finally {
-                    button.innerHTML = originalText;
-                    button.disabled = false;
+                    console.error('Error loading detection progress:', error);
+                }
+            }
+            
+            async function loadStatusBar() {
+                try {
+                    const response = await fetch('/api/listeners/analytics');
+                    const data = await response.json();
+                    
+                    if (data.status === 'healthy') {
+                        const overview = data.analytics.overview;
+                        document.getElementById('totalSites').textContent = overview.total_sites;
+                        document.getElementById('totalUrls').textContent = overview.total_urls_monitored.toLocaleString();
+                        document.getElementById('totalChanges').textContent = overview.total_changes_detected.toLocaleString();
+                        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+                    }
+                } catch (error) {
+                    console.error('Error loading status bar:', error);
+                }
+            }
+            
+            async function loadRealtimeData() {
+                try {
+                    const response = await fetch('/api/listeners/realtime');
+                    const data = await response.json();
+                    
+                    const content = document.getElementById('realtimeContent');
+                    
+                    if (data.status === 'healthy') {
+                        let html = '<div class="site-list">';
+                        
+                        data.sites.forEach(site => {
+                            const timeSince = site.time_since_last_seconds;
+                            let timeDisplay = 'Unknown';
+                            
+                            if (timeSince !== null) {
+                                if (timeSince < 60) {
+                                    timeDisplay = `${Math.round(timeSince)}s ago`;
+                                } else if (timeSince < 3600) {
+                                    timeDisplay = `${Math.round(timeSince / 60)}m ago`;
+                                } else {
+                                    timeDisplay = `${Math.round(timeSince / 3600)}h ago`;
+                                }
+                            }
+                            
+                            html += `
+                                <div class="site-item">
+                                    <div class="site-header">
+                                        <div class="site-name">${site.site_name}</div>
+                                        <div class="site-status ${site.status === 'active' ? 'status-active' : 'status-inactive'}">
+                                            ${site.status}
+                                        </div>
+                                    </div>
+                                    <div class="site-details">
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.current_urls.toLocaleString()}</div>
+                                            <div class="detail-label">URLs</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.last_change_count}</div>
+                                            <div class="detail-label">Last Changes</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <div class="detail-value">${timeDisplay}</div>
+                                            <div class="detail-label">Last Detection</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.detection_methods.join(', ')}</div>
+                                            <div class="detail-label">Methods</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        html += '</div>';
+                        content.innerHTML = html;
+                    } else {
+                        content.innerHTML = '<div class="error">Unable to load real-time data</div>';
+                    }
+                } catch (error) {
+                    console.error('Error loading real-time data:', error);
+                    document.getElementById('realtimeContent').innerHTML = '<div class="error">Error loading real-time data</div>';
+                }
+            }
+            
+            async function loadAnalytics() {
+                try {
+                    const response = await fetch('/api/listeners/analytics');
+                    const data = await response.json();
+                    
+                    const content = document.getElementById('analyticsContent');
+                    
+                    if (data.status === 'healthy') {
+                        const overview = data.analytics.overview;
+                        const sites = data.analytics.sites;
+                        
+                        let html = `
+                            <div class="stats-grid">
+                                <div class="stat">
+                                    <div class="stat-number">${overview.active_sites}</div>
+                                    <div class="stat-label">Active Sites</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-number">${overview.total_urls_monitored.toLocaleString()}</div>
+                                    <div class="stat-label">Total URLs</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-number">${overview.total_changes_detected}</div>
+                                    <div class="stat-label">Total Changes</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-number">${sites.length}</div>
+                                    <div class="stat-label">Configured Sites</div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        content.innerHTML = html;
+                    } else {
+                        content.innerHTML = '<div class="error">Unable to load analytics</div>';
+                    }
+                } catch (error) {
+                    console.error('Error loading analytics:', error);
+                    document.getElementById('analyticsContent').innerHTML = '<div class="error">Error loading analytics</div>';
                 }
             }
             
@@ -554,73 +793,405 @@ async def dashboard():
                     const response = await fetch('/api/listeners/changes?limit=10');
                     const data = await response.json();
                     
-                    if (data.changes && data.changes.length > 0) {
-                        const changesHtml = data.changes.map(change => `
-                            <div class="change-item ${change.change_type}">
-                                <div class="change-url">${change.url}</div>
-                                <div class="change-type">${change.change_type} - ${change.detected_at}</div>
-                            </div>
-                        `).join('');
+                    const content = document.getElementById('recentChangesContent');
+                    
+                    if (data.recent_changes && data.recent_changes.length > 0) {
+                        let html = '<div class="recent-changes">';
                         
-                        document.getElementById('changes-results').innerHTML = changesHtml;
+                        data.recent_changes.forEach(change => {
+                            const time = new Date(change.detection_time).toLocaleString();
+                            const summary = change.summary;
+                            const changeText = summary.total_changes > 0 ? 
+                                `${summary.total_changes} changes detected` : 
+                                'No changes detected';
+                            
+                            html += `
+                                <div class="change-item">
+                                    <div class="change-header">
+                                        <div class="change-site">${change.site_name}</div>
+                                        <div class="change-time">${time}</div>
+                                    </div>
+                                    <div class="change-summary">${changeText}</div>
+                                </div>
+                            `;
+                        });
+                        
+                        html += '</div>';
+                        content.innerHTML = html;
                     } else {
-                        document.getElementById('changes-results').innerHTML = `
-                            <div class="activity-indicator">
-                                <div class="status-indicator status-online"></div>
-                                <span>No Recent Changes</span>
-                            </div>
-                            <div style="margin-top: 15px; color: #6c757d; font-size: 0.9rem;">
-                                All monitored sites are up to date.
-                            </div>
-                        `;
+                        content.innerHTML = '<div class="loading">No recent changes found</div>';
                     }
                 } catch (error) {
-                    document.getElementById('changes-results').innerHTML = `
-                        <div class="activity-indicator">
-                            <div class="status-indicator status-offline"></div>
-                            <span>Error Loading Changes</span>
-                        </div>
-                        <div style="margin-top: 15px; color: #dc3545; font-size: 0.9rem;">
-                            ${error.message}
-                        </div>
-                    `;
+                    console.error('Error loading recent changes:', error);
+                    document.getElementById('recentChangesContent').innerHTML = '<div class="error">Error loading recent changes</div>';
                 }
             }
             
-            function updatePerformanceStats(data) {
-                let totalUrls = 0;
+            async function loadSiteManagement() {
+                try {
+                    const response = await fetch('/api/listeners/sites');
+                    const sites = await response.json();
+                    
+                    const content = document.getElementById('siteManagementContent');
+                    
+                    if (sites && sites.length > 0) {
+                        let html = '<div class="site-list">';
+                        
+                        sites.forEach(site => {
+                            html += `
+                                <div class="site-item">
+                                    <div class="site-header">
+                                        <div class="site-name">${site.name}</div>
+                                        <div class="site-status ${site.is_active ? 'status-active' : 'status-inactive'}">
+                                            ${site.is_active ? 'Active' : 'Inactive'}
+                                        </div>
+                                    </div>
+                                    <div class="site-details">
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.site_id}</div>
+                                            <div class="detail-label">ID</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.detection_methods.join(', ')}</div>
+                                            <div class="detail-label">Methods</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.check_interval_minutes}m</div>
+                                            <div class="detail-label">Interval</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <button class="btn btn-warning" onclick="triggerSite('${site.site_id}')">
+                                                Trigger
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        html += '</div>';
+                        content.innerHTML = html;
+                    } else {
+                        content.innerHTML = '<div class="loading">No sites configured</div>';
+                    }
+                } catch (error) {
+                    console.error('Error loading site management:', error);
+                    document.getElementById('siteManagementContent').innerHTML = '<div class="error">Error loading site management</div>';
+                }
+            }
+            
+            async function loadDetailedAnalytics() {
+                try {
+                    const response = await fetch('/api/listeners/analytics');
+                    const data = await response.json();
+                    
+                    const content = document.getElementById('detailedAnalyticsContent');
+                    
+                    if (data.status === 'healthy') {
+                        const sites = data.analytics.sites;
+                        
+                        let html = '<div class="site-list">';
+                        
+                        sites.forEach(site => {
+                            const lastDetection = site.last_detection ? 
+                                new Date(site.last_detection).toLocaleString() : 
+                                'Never';
+                            
+                            html += `
+                                <div class="site-item">
+                                    <div class="site-header">
+                                        <div class="site-name">${site.site_name}</div>
+                                        <div class="site-status ${site.is_active ? 'status-active' : 'status-inactive'}">
+                                            ${site.is_active ? 'Active' : 'Inactive'}
+                                        </div>
+                                    </div>
+                                    <div class="site-details">
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.total_urls.toLocaleString()}</div>
+                                            <div class="detail-label">URLs</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.total_changes}</div>
+                                            <div class="detail-label">Changes</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.new_pages}</div>
+                                            <div class="detail-label">New Pages</div>
+                                        </div>
+                                        <div class="detail-item">
+                                            <div class="detail-value">${site.modified_pages}</div>
+                                            <div class="detail-label">Modified</div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top: 10px; font-size: 0.8rem; color: #6c757d;">
+                                        Last detection: ${lastDetection}
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        html += '</div>';
+                        content.innerHTML = html;
+                    } else {
+                        content.innerHTML = '<div class="error">Unable to load detailed analytics</div>';
+                    }
+                } catch (error) {
+                    console.error('Error loading detailed analytics:', error);
+                    document.getElementById('detailedAnalyticsContent').innerHTML = '<div class="error">Error loading detailed analytics</div>';
+                }
+            }
+            
+            async function loadHistoricalData() {
+                try {
+                    const response = await fetch('/api/listeners/history?days=7');
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        createUrlsChart(data.history);
+                        createChangesChart(data.history);
+                    }
+                } catch (error) {
+                    console.error('Error loading historical data:', error);
+                }
+            }
+            
+            function createUrlsChart(historyData) {
+                const ctx = document.getElementById('urlsChart').getContext('2d');
                 
-                if (data.sites) {
-                    Object.values(data.sites).forEach(site => {
-                        if (site.methods && site.methods.sitemap) {
-                            totalUrls += site.methods.sitemap.metadata?.current_urls || 0;
+                if (urlsChart) {
+                    urlsChart.destroy();
+                }
+                
+                const datasets = [];
+                const labels = [];
+                
+                // Process data for each site
+                Object.keys(historyData.sites).forEach((siteId, index) => {
+                    const site = historyData.sites[siteId];
+                    const siteData = [];
+                    
+                    // Get unique dates from all detections
+                    const dates = [...new Set(site.detections.map(d => d.detection_time.split('T')[0]))].sort();
+                    
+                    dates.forEach(date => {
+                        const dayData = site.daily_summary[date];
+                        if (dayData) {
+                            siteData.push(dayData.total_changes);
+                        } else {
+                            siteData.push(0);
                         }
                     });
-                } else if (data.methods && data.methods.sitemap) {
-                    totalUrls = data.methods.sitemap.metadata?.current_urls || 0;
-                }
+                    
+                    if (labels.length === 0) {
+                        labels.push(...dates);
+                    }
+                    
+                    const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe'];
+                    
+                    datasets.push({
+                        label: site.site_name,
+                        data: siteData,
+                        borderColor: colors[index % colors.length],
+                        backgroundColor: colors[index % colors.length] + '20',
+                        tension: 0.4,
+                        fill: false
+                    });
+                });
                 
-                document.getElementById('total-urls').textContent = totalUrls.toLocaleString();
-                document.getElementById('detection-time').textContent = '~1.2s';
+                urlsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            title: {
+                                display: true,
+                                text: 'URL Growth Over Time'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
             }
             
-            function showNotification(message, type) {
-                const notification = document.createElement('div');
-                notification.className = `notification ${type}`;
-                notification.innerHTML = message;
-                document.body.appendChild(notification);
+            function createChangesChart(historyData) {
+                const ctx = document.getElementById('changesChart').getContext('2d');
                 
-                // Show notification
-                setTimeout(() => {
-                    notification.classList.add('show');
-                }, 100);
+                if (changesChart) {
+                    changesChart.destroy();
+                }
                 
-                // Hide notification
+                const datasets = [];
+                const labels = [];
+                
+                // Process data for each site
+                Object.keys(historyData.sites).forEach((siteId, index) => {
+                    const site = historyData.sites[siteId];
+                    const siteData = [];
+                    
+                    // Get unique dates from all detections
+                    const dates = [...new Set(site.detections.map(d => d.detection_time.split('T')[0]))].sort();
+                    
+                    dates.forEach(date => {
+                        const dayData = site.daily_summary[date];
+                        if (dayData) {
+                            siteData.push(dayData.total_changes);
+                        } else {
+                            siteData.push(0);
+                        }
+                    });
+                    
+                    if (labels.length === 0) {
+                        labels.push(...dates);
+                    }
+                    
+                    const colors = ['#28a745', '#ffc107', '#dc3545', '#17a2b8', '#6f42c1'];
+                    
+                    datasets.push({
+                        label: site.site_name,
+                        data: siteData,
+                        borderColor: colors[index % colors.length],
+                        backgroundColor: colors[index % colors.length] + '20',
+                        tension: 0.4,
+                        fill: false
+                    });
+                });
+                
+                changesChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            title: {
+                                display: true,
+                                text: 'Change Activity Over Time'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+            
+            function switchTab(tabName) {
+                // Hide all tab contents
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                
+                // Remove active class from all tabs
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                
+                // Show selected tab content
+                document.getElementById(tabName + 'Tab').classList.add('active');
+                
+                // Add active class to clicked tab
+                event.target.classList.add('active');
+            }
+            
+            async function triggerSite(siteId) {
+                try {
+                    const response = await fetch(`/api/listeners/trigger/${siteId}`, {
+                        method: 'POST'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        if (data.status === 'started') {
+                            showSuccess(`Detection started for ${siteId}. Monitoring progress...`);
+                            // Start monitoring progress more frequently
+                            const progressInterval = setInterval(async () => {
+                                await loadDetectionProgress();
+                                const progressData = await fetch('/api/listeners/progress').then(r => r.json());
+                                if (!progressData.detection_status.is_running) {
+                                    clearInterval(progressInterval);
+                                    loadAllData();
+                                }
+                            }, 1000);
+                        } else {
+                            showSuccess(`Successfully triggered detection for ${siteId}`);
+                            setTimeout(() => {
+                                loadAllData();
+                            }, 2000);
+                        }
+                    } else {
+                        showError(`Failed to trigger detection for ${siteId}: ${data.detail || 'Unknown error'}`);
+                    }
+                } catch (error) {
+                    console.error('Error triggering site:', error);
+                    showError(`Error triggering detection for ${siteId}`);
+                }
+            }
+            
+            async function triggerAllSites() {
+                try {
+                    const response = await fetch('/api/listeners/trigger/all', {
+                        method: 'POST'
+                    });
+                    
+                    if (response.ok) {
+                        showSuccess('Successfully triggered detection for all sites');
+                        setTimeout(() => {
+                            loadAllData();
+                        }, 2000);
+                    } else {
+                        showError('Failed to trigger detection for all sites');
+                    }
+                } catch (error) {
+                    console.error('Error triggering all sites:', error);
+                    showError('Error triggering detection for all sites');
+                }
+            }
+            
+            function refreshData() {
+                showRefreshIndicator();
+                loadAllData();
+            }
+            
+            function showSuccess(message) {
+                const successDiv = document.createElement('div');
+                successDiv.className = 'success';
+                successDiv.textContent = message;
+                document.querySelector('.container').insertBefore(successDiv, document.querySelector('.status-bar').nextSibling);
+                
                 setTimeout(() => {
-                    notification.classList.remove('show');
-                    setTimeout(() => {
-                        notification.remove();
-                    }, 300);
+                    successDiv.remove();
+                }, 5000);
+            }
+            
+            function showError(message) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error';
+                errorDiv.textContent = message;
+                document.querySelector('.container').insertBefore(errorDiv, document.querySelector('.status-bar').nextSibling);
+                
+                setTimeout(() => {
+                    errorDiv.remove();
                 }, 5000);
             }
         </script>

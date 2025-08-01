@@ -119,11 +119,20 @@ class SitemapDetector(BaseDetector):
                 else:
                     # Single sitemap
                     urls = self._parse_sitemap(content)
-                    return urls, {
+                    
+                    # Extract last modified date
+                    last_modified = self._extract_last_modified(content)
+                    
+                    sitemap_info = {
                         "type": "single_sitemap",
                         "sitemap_url": self.sitemap_url,
                         "total_urls": len(urls)
                     }
+                    
+                    if last_modified:
+                        sitemap_info["last_modified"] = last_modified
+                    
+                    return urls, sitemap_info
     
     def _is_sitemap_index(self, content: str) -> bool:
         """Check if the XML content is a sitemap index."""
@@ -150,6 +159,11 @@ class SitemapDetector(BaseDetector):
             "index_url": self.sitemap_url,
             "sitemaps": []
         }
+        
+        # Extract last_modified from the sitemap index itself
+        index_last_modified = self._extract_last_modified(index_content)
+        if index_last_modified:
+            sitemap_info["index_last_modified"] = index_last_modified
         
         # Parse the sitemap index
         sitemap_urls = self._parse_sitemap_index(index_content)
@@ -241,13 +255,55 @@ class SitemapDetector(BaseDetector):
             
             root = ET.fromstring(content)
             
-            # Look for lastmod in the root element
-            lastmod_elem = root.find('sitemap:lastmod', namespaces)
-            if lastmod_elem is None:
-                lastmod_elem = root.find('lastmod')
+            # First, check if this is a sitemap index
+            sitemap_elements = root.findall('.//sitemap:sitemap', namespaces)
+            if not sitemap_elements:
+                sitemap_elements = root.findall('.//sitemap')
             
-            if lastmod_elem is not None and lastmod_elem.text:
-                return lastmod_elem.text.strip()
+            if sitemap_elements:
+                # This is a sitemap index - extract lastmod from each sitemap element
+                last_modified_dates = []
+                for sitemap_elem in sitemap_elements:
+                    lastmod_elem = sitemap_elem.find('sitemap:lastmod', namespaces)
+                    if lastmod_elem is None:
+                        lastmod_elem = sitemap_elem.find('lastmod')
+                    
+                    if lastmod_elem is not None and lastmod_elem.text:
+                        last_modified_dates.append(lastmod_elem.text.strip())
+                
+                # Return the most recent date if any were found
+                if last_modified_dates:
+                    # Sort dates and return the most recent
+                    last_modified_dates.sort(reverse=True)
+                    return last_modified_dates[0]
+            else:
+                # This is a regular sitemap - look for lastmod in individual url elements
+                url_elements = root.findall('.//sitemap:url', namespaces)
+                if not url_elements:
+                    url_elements = root.findall('.//url')
+                
+                last_modified_dates = []
+                for url_elem in url_elements:
+                    lastmod_elem = url_elem.find('sitemap:lastmod', namespaces)
+                    if lastmod_elem is None:
+                        lastmod_elem = url_elem.find('lastmod')
+                    
+                    if lastmod_elem is not None and lastmod_elem.text:
+                        last_modified_dates.append(lastmod_elem.text.strip())
+                
+                # Return the most recent date if any were found
+                if last_modified_dates:
+                    # Sort dates and return the most recent
+                    last_modified_dates.sort(reverse=True)
+                    return last_modified_dates[0]
+                
+                # Fallback: look for lastmod in the root element
+                lastmod_elem = root.find('sitemap:lastmod', namespaces)
+                if lastmod_elem is None:
+                    lastmod_elem = root.find('lastmod')
+                
+                if lastmod_elem is not None and lastmod_elem.text:
+                    return lastmod_elem.text.strip()
             
             return None
             

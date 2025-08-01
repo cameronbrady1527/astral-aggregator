@@ -10,21 +10,45 @@ sites:
     name: 'Judiciary UK'
     url: 'https://www.judiciary.uk/'
     sitemap_url: 'https://www.judiciary.uk/sitemap_index.xml'
-    detection_methods: ['sitemap', 'firecrawl']
+    detection_methods: ['hybrid']  # Use hybrid detection for comprehensive monitoring
     check_interval_minutes: 1440
     is_active: true
+    # Content detection settings
+    enable_content_detection: true
+    content_check_interval: 24  # Check content every 24 hours
+    max_content_pages: 20  # Check content of top 20 pages
+    content_timeout: 10  # 10 second timeout per page
+    content_selectors: ['main', 'article', '.content', '#content', '.main-content']
+    exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
   
   waverley_gov:
     name: 'Waverley Borough Council'
     url: 'https://www.waverley.gov.uk/'
     sitemap_url: 'https://www.waverley.gov.uk/sitemap.xml'
-    detection_methods: ['sitemap', 'firecrawl']
+    detection_methods: ['hybrid']  # Use hybrid detection for comprehensive monitoring
     check_interval_minutes: 1440
     is_active: true
+    # Content detection settings
+    enable_content_detection: true
+    content_check_interval: 24  # Check content every 24 hours
+    max_content_pages: 15  # Check content of top 15 pages
+    content_timeout: 10  # 10 second timeout per page
+    content_selectors: ['main', 'article', '.content', '#content', '.main-content']
+    exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
 
 firecrawl:
-  api_key: 'your-firecrawl-api-key-here'
+  api_key: 'fc-c47892ff7ee74d7f93eff96d91665a1e'
   base_url: 'https://api.firecrawl.dev'
+  # Performance optimization settings
+  limit: 10  # Page limit (correct parameter name)
+  wait_for: 100  # Reduced wait time (ms)
+  timeout: 15000  # 15 second timeout per page
+  max_age: 3600000  # 1 hour cache for 500% speed boost
+  include_js: false  # Disable JS for speed
+  include_images: false  # Disable images for speed
+  follow_redirects: false  # Skip redirects for speed
+  retry_on_failure: false  # Don't retry failed pages
+  # Note: max_pages, max_requests_per_second, and max_depth are not supported by Firecrawl SDK
 
 system:
   output_directory: 'output'

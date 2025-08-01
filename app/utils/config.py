@@ -15,6 +15,9 @@ import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+# Third Party -----
+from dotenv import load_dotenv
+
 # ==============================================================================
 # Public exports
 # ==============================================================================
@@ -49,6 +52,9 @@ class ConfigManager:
     
     def __init__(self, config_file: str = "config/sites.yaml"):
         """Initialize configuration manager."""
+        # Load environment variables from .env file
+        load_dotenv()
+        
         self.config_file = Path(config_file)
         self.config_file.parent.mkdir(exist_ok=True)
         self.sites: Dict[str, SiteConfig] = {}

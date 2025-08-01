@@ -18,6 +18,8 @@ from datetime import datetime
 from .base_detector import BaseDetector, ChangeResult
 from .sitemap_detector import SitemapDetector
 from .firecrawl_detector import FirecrawlDetector
+from .content_detector import ContentDetector
+from .hybrid_detector import HybridDetector
 from ..utils.json_writer import ChangeDetectionWriter
 from ..utils.config import ConfigManager
 
@@ -105,7 +107,14 @@ class ChangeDetector:
         elif method == "firecrawl":
             api_key = self.firecrawl_config.get("api_key")
             base_url = self.firecrawl_config.get("base_url", "https://api.firecrawl.dev")
-            return FirecrawlDetector(site_config, api_key, base_url)
+            detector = FirecrawlDetector(site_config, api_key, base_url)
+            # Pass firecrawl configuration to the detector
+            detector.firecrawl_config = self.firecrawl_config
+            return detector
+        elif method == "content":
+            return ContentDetector(site_config)
+        elif method == "hybrid":
+            return HybridDetector(site_config)
         else:
             raise ValueError(f"Unknown detection method: {method}")
     

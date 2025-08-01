@@ -11,6 +11,7 @@
 
 # Standard Library -----
 import asyncio
+import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -95,7 +96,8 @@ class FirecrawlDetector(BaseDetector):
                 "firecrawl_response": crawl_data,
                 "api_endpoint": "FirecrawlApp SDK",
                 "total_pages_crawled": len(crawl_data.get("data", [])),
-                "credits_used": crawl_data.get("creditsUsed", 0)
+                "credits_used": crawl_data.get("creditsUsed", 0),
+                "performance_metrics": crawl_data.get("performance_metrics", {})
             })
             
         except Exception as e:
@@ -119,12 +121,107 @@ class FirecrawlDetector(BaseDetector):
     
     def _sync_crawl_with_change_tracking(self) -> Dict[str, Any]:
         """Synchronous crawl method for the SDK."""
+        start_time = time.time()
         try:
-            scrape_options = ScrapeOptions(formats=['markdown', 'changeTracking'])
+            # Get configuration settings for optimization
+            config = getattr(self, 'firecrawl_config', {})
+            limit = config.get('limit', 10)  # Use limit parameter (correct!)
+            wait_for = config.get('wait_for', 100)  # Reduced to 100ms
+            timeout = config.get('timeout', 15000)  # 15 second timeout
+            max_age = config.get('max_age', 3600000)  # 1 hour cache for 500% speed boost
+            
+            print(f"🕷️ Starting Firecrawl detection for {self.site_url}")
+            print(f"   📊 Limit: {limit} pages, Wait time: {wait_for}ms, Timeout: {timeout}ms")
+            print(f"   ⚡ Using cached data (maxAge: {max_age}ms) for 500% speed boost")
+            
+            # Optimized settings for speed while keeping CSS selectors for completeness
+            scrape_options = ScrapeOptions(
+                formats=['markdown', 'changeTracking'],
+                # Fast processing settings
+                waitFor=wait_for,  # Correct parameter name
+                timeout=timeout,
+                # Performance optimizations
+                onlyMainContent=True,  # Focus on main content only
+                blockAds=True,  # Block ads for speed
+                maxAge=max_age,  # Use cached data for 500% speed boost
+                # Keep CSS selectors for completeness (as requested)
+                includeTags=['main', 'article', '.content', '#content', 'body'],
+                # More aggressive exclusions to reduce processing overhead
+                excludeTags=[
+                    'nav', 'footer', '.sidebar', '.ads', '.comments', 
+                    '.header', '.menu', '.navigation', '.breadcrumb',
+                    '.social', '.share', '.related', '.recommended',
+                    '.widget', '.sidebar-widget', '.footer-widget',
+                    '.advertisement', '.banner', '.promo', '.sponsored',
+                    '.cookie-notice', '.privacy-notice', '.disclaimer',
+                    '.breadcrumbs', '.pagination', '.search-results',
+                    '.related-posts', '.popular-posts', '.trending',
+                    '.newsletter', '.subscribe', '.signup',
+                    '.social-media', '.social-links', '.social-icons',
+                    '.author-bio', '.author-info', '.author-avatar',
+                    '.tags', '.categories', '.meta', '.metadata',
+                    '.date', '.time', '.published', '.updated',
+                    '.print', '.email', '.share-this', '.bookmark',
+                    '.favorite', '.like', '.vote', '.rating',
+                    '.review', '.comment', '.feedback', '.contact',
+                    '.search', '.filter', '.sort', '.view-options'
+                ]
+            )
+            
+            print(f"   🔄 Starting optimized crawl with limit={limit}...")
+            crawl_start = time.time()
             result = self.app.crawl_url(
                 self.site_url,
+                limit=limit,  # ✅ Use the correct limit parameter
                 scrape_options=scrape_options
             )
-            return result
+            crawl_duration = time.time() - crawl_start
+            
+            # Handle both dictionary and object responses from Firecrawl SDK
+            if hasattr(result, 'data'):
+                # New SDK format: CrawlStatusResponse object
+                pages_crawled = len(result.data) if result.data else 0
+                credits_used = getattr(result, 'creditsUsed', 0)
+                # Convert to dictionary format for compatibility
+                result_dict = {
+                    'data': result.data if result.data else [],
+                    'creditsUsed': credits_used,
+                    'status': getattr(result, 'status', 'unknown'),
+                    'message': getattr(result, 'message', '')
+                }
+            else:
+                # Old SDK format: dictionary
+                pages_crawled = len(result.get("data", []))
+                credits_used = result.get("creditsUsed", 0)
+                result_dict = result
+            
+            total_duration = time.time() - start_time
+            
+            # Performance metrics
+            pages_per_second = pages_crawled / crawl_duration if crawl_duration > 0 else 0
+            credits_per_second = credits_used / crawl_duration if crawl_duration > 0 else 0
+            
+            # Verify we didn't exceed the limit
+            if pages_crawled > limit:
+                print(f"   ⚠️ Warning: Crawled {pages_crawled} pages (exceeded limit of {limit})")
+            else:
+                print(f"   ✅ Crawl completed: {pages_crawled} pages, {credits_used} credits used")
+            
+            print(f"   ⏱️ Performance: {crawl_duration:.2f}s crawl, {total_duration:.2f}s total")
+            print(f"   📈 Rate: {pages_per_second:.2f} pages/sec, {credits_per_second:.2f} credits/sec")
+            
+            # Add performance metrics to result
+            result_dict['performance_metrics'] = {
+                'crawl_duration_seconds': crawl_duration,
+                'total_duration_seconds': total_duration,
+                'pages_per_second': pages_per_second,
+                'credits_per_second': credits_per_second,
+                'pages_crawled': pages_crawled,
+                'credits_used': credits_used
+            }
+            
+            return result_dict
         except Exception as e:
+            total_duration = time.time() - start_time
+            print(f"   ❌ Firecrawl error after {total_duration:.2f}s: {e}")
             raise Exception(f"Firecrawl SDK crawl error: {e}") 
