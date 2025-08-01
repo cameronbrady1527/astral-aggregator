@@ -37,7 +37,7 @@ sites:
     exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
 
 firecrawl:
-  api_key: 'fc-c47892ff7ee74d7f93eff96d91665a1e'
+  api_key: '${FIRECRAWL_API_KEY}'  # Set this environment variable or replace with your actual API key
   base_url: 'https://api.firecrawl.dev'
   # Performance optimization settings
   limit: 10  # Page limit (correct parameter name)
