@@ -66,6 +66,8 @@ logs/
 # API keys and secrets
 config/sites.yaml
 !config/sites.yaml.example
+config/sites_railway.yaml
+!config/sites_railway.yaml.example
 
 # Test coverage
 .coverage

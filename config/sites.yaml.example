@@ -1,0 +1,40 @@
+# ==============================================================================
+# sites.yaml.example — Example Configuration for Change Detection System
+# ==============================================================================
+# Purpose: Example configuration file for site monitoring
+# Copy this file to sites.yaml and add your API keys
+# ==============================================================================
+
+sites:
+  judiciary_uk:
+    name: 'Judiciary UK'
+    url: 'https://www.judiciary.uk/'
+    sitemap_url: 'https://www.judiciary.uk/sitemap_index.xml'
+    detection_methods: ['hybrid']  # Use hybrid detection for comprehensive monitoring
+    check_interval_minutes: 1440
+    is_active: true
+    # Content detection settings
+    enable_content_detection: true
+    content_check_interval: 24  # Check content every 24 hours
+    max_content_pages: 20  # Check content of top 20 pages
+    content_timeout: 10  # 10 second timeout per page
+    content_selectors: ['main', 'article', '.content', '#content', '.main-content']
+    exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
+
+  waverley_gov:
+    name: 'Waverley Borough Council'
+    url: 'https://www.waverley.gov.uk/'
+    sitemap_url: 'https://www.waverley.gov.uk/sitemap.xml'
+    detection_methods: ['hybrid']
+    check_interval_minutes: 1440
+    is_active: true
+
+firecrawl:
+  api_key: ${FIRECRAWL_API_KEY}  # Set this environment variable
+  base_url: 'https://api.firecrawl.dev'
+
+system:
+  output_directory: 'output'
+  log_level: 'INFO'
+  max_retries: 3
+  timeout_seconds: 30 

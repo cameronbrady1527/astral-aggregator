@@ -68,18 +68,32 @@ class ConfigManager:
         with open(self.config_file, 'r', encoding='utf-8') as f:
             config_data = yaml.safe_load(f)
         
+        # Replace environment variable placeholders in the entire config
+        config_data = self._substitute_env_vars(config_data)
+        
         sites_data = config_data.get('sites', {})
         for site_id, site_data in sites_data.items():
             self.sites[site_id] = SiteConfig(**site_data)
         
         self.firecrawl_config = config_data.get('firecrawl', {})
         self.system_config = config_data.get('system', {})
-        
-        # Replace environment variable placeholders
-        if self.firecrawl_config.get('api_key') == '${FIRECRAWL_API_KEY}':
-            api_key = os.getenv('FIRECRAWL_API_KEY')
-            if api_key:
-                self.firecrawl_config['api_key'] = api_key
+    
+    def _substitute_env_vars(self, data: Any) -> Any:
+        """Recursively substitute environment variable placeholders."""
+        if isinstance(data, dict):
+            return {key: self._substitute_env_vars(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [self._substitute_env_vars(item) for item in data]
+        elif isinstance(data, str) and data.startswith('${') and data.endswith('}'):
+            # Extract environment variable name
+            env_var = data[2:-1]  # Remove ${ and }
+            env_value = os.getenv(env_var)
+            if env_value is None:
+                print(f"Warning: Environment variable {env_var} not found")
+                return data  # Return original if not found
+            return env_value
+        else:
+            return data
     
     def create_default_config(self) -> None:
         """Create a default configuration file."""

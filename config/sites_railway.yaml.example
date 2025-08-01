@@ -1,7 +1,8 @@
 # ==============================================================================
-# sites_railway.yaml — Railway-Optimized Configuration
+# sites_railway.yaml.example — Example Railway-Optimized Configuration
 # ==============================================================================
-# Purpose: Lightweight configuration for Railway deployment
+# Purpose: Example lightweight configuration for Railway deployment
+# Copy this file to sites_railway.yaml and add your API keys
 # ==============================================================================
 
 sites:
@@ -18,7 +19,7 @@ sites:
     content_timeout: 5  # Shorter timeout
 
 firecrawl:
-  api_key: ${FIRECRAWL_API_KEY}  # Use environment variable
+  api_key: ${FIRECRAWL_API_KEY}  # Set this environment variable
   base_url: 'https://api.firecrawl.dev'
 
 system:
