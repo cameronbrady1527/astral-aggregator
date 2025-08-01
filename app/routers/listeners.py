@@ -379,13 +379,36 @@ async def get_site_changes(
                 
                 # Only include files with valid detection times
                 if detection_time:
+                    # Get summary from the changes data
+                    changes_data = change_data.get("changes", {})
+                    
+                    # Check if there's a direct summary (for older format)
+                    summary = changes_data.get("summary", {})
+                    
+                    # If no direct summary, check methods for summary
+                    if not summary and "methods" in changes_data:
+                        combined_summary = {
+                            "total_changes": 0,
+                            "new_pages": 0,
+                            "modified_pages": 0,
+                            "deleted_pages": 0
+                        }
+                        for method_name, method_data in changes_data["methods"].items():
+                            method_summary = method_data.get("summary", {})
+                            combined_summary["total_changes"] += method_summary.get("total_changes", 0)
+                            combined_summary["new_pages"] += method_summary.get("new_pages", 0)
+                            combined_summary["modified_pages"] += method_summary.get("modified_pages", 0)
+                            combined_summary["deleted_pages"] += method_summary.get("deleted_pages", 0)
+                        summary = combined_summary
+                    
                     recent_changes.append({
                         "file_path": file_path,
                         "detection_time": detection_time,
-                        "summary": change_data.get("changes", {}).get("summary", {}),
-                        "methods": list(change_data.get("changes", {}).get("methods", {}).keys())
+                        "summary": summary,
+                        "methods": list(changes_data.get("methods", {}).keys())
                     })
             except Exception as e:
+                print(f"Error processing change file {file_path}: {e}")
                 continue
         
         return {
@@ -429,14 +452,37 @@ async def get_all_changes(
                     
                     # Only include files with valid detection times
                     if detection_time:
+                        # Get summary from the changes data
+                        changes_data = change_data.get("changes", {})
+                        
+                        # Check if there's a direct summary (for older format)
+                        summary = changes_data.get("summary", {})
+                        
+                        # If no direct summary, check methods for summary
+                        if not summary and "methods" in changes_data:
+                            combined_summary = {
+                                "total_changes": 0,
+                                "new_pages": 0,
+                                "modified_pages": 0,
+                                "deleted_pages": 0
+                            }
+                            for method_name, method_data in changes_data["methods"].items():
+                                method_summary = method_data.get("summary", {})
+                                combined_summary["total_changes"] += method_summary.get("total_changes", 0)
+                                combined_summary["new_pages"] += method_summary.get("new_pages", 0)
+                                combined_summary["modified_pages"] += method_summary.get("modified_pages", 0)
+                                combined_summary["deleted_pages"] += method_summary.get("deleted_pages", 0)
+                            summary = combined_summary
+                        
                         all_changes.append({
                             "site_id": site["site_id"],
                             "site_name": site["name"],
                             "file_path": file_path,
                             "detection_time": detection_time,
-                            "summary": change_data.get("changes", {}).get("summary", {})
+                            "summary": summary
                         })
-                except Exception:
+                except Exception as e:
+                    print(f"Error processing change file {file_path}: {e}")
                     continue
         
         all_changes.sort(key=lambda x: x.get("detection_time", ""), reverse=True)
@@ -489,8 +535,13 @@ async def get_system_analytics() -> Dict[str, Any]:
                     latest_state_file = state_files[0]  # Most recent state file
                     state_data = change_detector.writer.read_json_file(latest_state_file)
                     sitemap_state = state_data.get("state", {}).get("sitemap_state", {})
+                    # The total_urls is directly in sitemap_state, not nested
                     site_urls = sitemap_state.get("total_urls", 0)
-                except Exception:
+                    # If not found, try to count the URLs array
+                    if site_urls == 0 and "urls" in sitemap_state:
+                        site_urls = len(sitemap_state["urls"])
+                except Exception as e:
+                    print(f"Error reading state file for {site_config.name}: {e}")
                     pass
             
             # Analyze recent change files
@@ -503,14 +554,29 @@ async def get_system_analytics() -> Dict[str, Any]:
                         if not last_detection or detection_time > last_detection:
                             last_detection = detection_time
                         
-                        # Get change counts
-                        summary = change_data.get("changes", {}).get("summary", {})
-                        site_total_changes += summary.get("total_changes", 0)
-                        site_new_pages += summary.get("new_pages", 0)
-                        site_modified_pages += summary.get("modified_pages", 0)
-                        site_deleted_pages += summary.get("deleted_pages", 0)
+                        # Get change counts from the changes data
+                        changes_data = change_data.get("changes", {})
                         
-                except Exception:
+                        # Check if there's a direct summary (for older format)
+                        summary = changes_data.get("summary", {})
+                        
+                        # If no direct summary, check methods for summary
+                        if not summary and "methods" in changes_data:
+                            for method_name, method_data in changes_data["methods"].items():
+                                method_summary = method_data.get("summary", {})
+                                site_total_changes += method_summary.get("total_changes", 0)
+                                site_new_pages += method_summary.get("new_pages", 0)
+                                site_modified_pages += method_summary.get("modified_pages", 0)
+                                site_deleted_pages += method_summary.get("deleted_pages", 0)
+                        else:
+                            # Use direct summary
+                            site_total_changes += summary.get("total_changes", 0)
+                            site_new_pages += summary.get("new_pages", 0)
+                            site_modified_pages += summary.get("modified_pages", 0)
+                            site_deleted_pages += summary.get("deleted_pages", 0)
+                        
+                except Exception as e:
+                    print(f"Error processing change file {file_path}: {e}")
                     continue
             
             total_urls += site_urls
@@ -685,7 +751,11 @@ async def get_realtime_status() -> Dict[str, Any]:
                     state_data = change_detector.writer.read_json_file(latest_state_file)
                     sitemap_state = state_data.get("state", {}).get("sitemap_state", {})
                     current_urls = sitemap_state.get("total_urls", 0)
-                except Exception:
+                    # If not found, try to count the URLs array
+                    if current_urls == 0 and "urls" in sitemap_state:
+                        current_urls = len(sitemap_state["urls"])
+                except Exception as e:
+                    print(f"Error reading state file for {site_config.name}: {e}")
                     pass
             
             # Get detection info from latest change file
@@ -695,11 +765,23 @@ async def get_realtime_status() -> Dict[str, Any]:
                     change_data = change_detector.writer.read_json_file(latest_file)
                     last_detection = change_data.get("metadata", {}).get("detection_time")
                     
-                    # Get last change count
-                    summary = change_data.get("changes", {}).get("summary", {})
-                    last_change_count = summary.get("total_changes", 0)
+                    # Get last change count from the changes data
+                    changes_data = change_data.get("changes", {})
                     
-                except Exception:
+                    # Check if there's a direct summary (for older format)
+                    summary = changes_data.get("summary", {})
+                    
+                    # If no direct summary, check methods for summary
+                    if not summary and "methods" in changes_data:
+                        for method_name, method_data in changes_data["methods"].items():
+                            method_summary = method_data.get("summary", {})
+                            last_change_count += method_summary.get("total_changes", 0)
+                    else:
+                        # Use direct summary
+                        last_change_count = summary.get("total_changes", 0)
+                    
+                except Exception as e:
+                    print(f"Error processing change file {latest_file}: {e}")
                     pass
             
             # Calculate time since last detection

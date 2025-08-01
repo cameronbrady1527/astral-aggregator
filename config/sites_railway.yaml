@@ -17,6 +17,21 @@ sites:
     max_content_pages: 5  # Reduced for Railway
     content_timeout: 5  # Shorter timeout
 
+  judiciary_uk:
+    name: 'Judiciary UK'
+    url: 'https://www.judiciary.uk/'
+    sitemap_url: 'https://www.judiciary.uk/sitemap_index.xml'
+    detection_methods: ['hybrid']  # Use hybrid detection for comprehensive monitoring
+    check_interval_minutes: 1440
+    is_active: true
+    # Content detection settings
+    enable_content_detection: true
+    content_check_interval: 24  # Check content every 24 hours
+    max_content_pages: 20  # Check content of top 20 pages
+    content_timeout: 10  # 10 second timeout per page
+    content_selectors: ['main', 'article', '.content', '#content', '.main-content']
+    exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
+
 firecrawl:
   api_key: ${FIRECRAWL_API_KEY}  # Use environment variable
   base_url: 'https://api.firecrawl.dev'
