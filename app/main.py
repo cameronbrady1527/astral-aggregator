@@ -23,16 +23,21 @@ from pydantic import BaseModel
 # ─── FastAPI Application ───────────────────────────────────────────────────────
 app = FastAPI(title="Astral API", description="Website Change Detection System")
 
+# Global flag to track if app is fully initialized
+app_initialized = False
+
 # Add startup logging
 @app.on_event("startup")
 async def startup_event():
     """Log startup information and include routers."""
+    global app_initialized
+    
     print("🚀 Astral API starting up...")
     print(f"PORT environment variable: {os.getenv('PORT', 'NOT SET')}")
     print(f"PYTHONPATH environment variable: {os.getenv('PYTHONPATH', 'NOT SET')}")
     print(f"Current working directory: {os.getcwd()}")
     
-    # Try to include routers
+    # Try to include routers (but don't fail if they don't work)
     try:
         from app.routers import listeners, dashboard
         app.include_router(listeners.router)
@@ -49,28 +54,30 @@ async def startup_event():
             }
     
     print("✅ Astral API startup complete!")
+    app_initialized = True
 
 @app.get("/ping")
 async def ping():
     """Simple ping endpoint for Railway health checks."""
     print("📡 Ping endpoint called")
-    return {"pong": "ok"}
+    return {"pong": "ok", "status": "healthy"}
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Railway."""
     print("📡 Health endpoint called")
     return {
-        "status": "healthy",
+        "status": "healthy" if app_initialized else "initializing",
         "service": "astral-api",
-        "version": "0.0.1"
+        "version": "0.0.1",
+        "initialized": app_initialized
     }
 
 @app.get("/")
 async def root():
     print("📡 Root endpoint called")
     return {
-        "status": "healthy",
+        "status": "healthy" if app_initialized else "initializing",
         "service": "astral-api",
         "version": "0.0.1",
         "message": "Welcome to the Astral API - Website Change Detection System",
@@ -79,10 +86,9 @@ async def root():
             "ping": "/ping",
             "api_docs": "/docs",
             "dashboard": "/dashboard/"
-        }
+        },
+        "initialized": app_initialized
     }
-
-
 
 # Add a simple test endpoint
 @app.get("/test")
@@ -92,5 +98,6 @@ async def test():
     return {
         "message": "Astral API is working!",
         "timestamp": "now",
-        "status": "success"
+        "status": "success",
+        "initialized": app_initialized
     }

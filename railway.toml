@@ -1,13 +1,10 @@
 [build]
 builder = "DOCKERFILE"
 
-# Fallback start command
-startCommand = "python start_railway.py"
-
 [deploy]
-healthcheckPath = "/ping"
-healthcheckTimeout = 300
-healthcheckStartPeriod = 120
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+healthcheckStartPeriod = 180
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
 numReplicas = 1

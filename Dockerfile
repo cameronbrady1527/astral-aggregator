@@ -28,5 +28,9 @@ EXPOSE 8000
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/ping', timeout=5)" || exit 1
+
 # Start the application
 CMD ["python", "start_simple.py"] 

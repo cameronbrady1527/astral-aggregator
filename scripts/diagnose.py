@@ -1,155 +1,167 @@
 #!/usr/bin/env python3
 """
-Diagnostic script for Railway deployment issues.
-This script helps identify common problems that cause healthcheck failures.
+Diagnostic script for troubleshooting startup and healthcheck issues
 """
 
 import os
 import sys
-import socket
-import requests
+import importlib
 import subprocess
 import time
 
 def check_environment():
-    """Check environment variables."""
-    print("=== Environment Variables ===")
-    important_vars = ['PORT', 'PYTHONPATH', 'FIRECRAWL_API_KEY', 'LOG_LEVEL']
+    """Check environment variables and basic setup."""
+    print("🔍 Environment Check")
+    print("=" * 40)
     
-    for var in important_vars:
-        value = os.getenv(var)
-        if value:
-            if var == 'FIRECRAWL_API_KEY':
-                print(f"{var}: {'*' * len(value)} (hidden)")
-            else:
-                print(f"{var}: {value}")
-        else:
-            print(f"{var}: NOT SET")
+    env_vars = [
+        'PORT', 'PYTHONPATH', 'PYTHONUNBUFFERED', 
+        'RAILWAY_ENVIRONMENT', 'RAILWAY_PUBLIC_DOMAIN'
+    ]
     
+    for var in env_vars:
+        value = os.getenv(var, 'NOT SET')
+        print(f"{var}: {value}")
+    
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Python version: {sys.version}")
+    print(f"Python executable: {sys.executable}")
     print()
 
-def check_dependencies():
-    """Check if all dependencies are available."""
-    print("=== Dependencies ===")
-    deps = ['fastapi', 'uvicorn', 'requests', 'yaml', 'aiohttp']
+def check_imports():
+    """Check if all required modules can be imported."""
+    print("🔍 Import Check")
+    print("=" * 40)
     
-    for dep in deps:
+    modules = [
+        'fastapi',
+        'uvicorn',
+        'aiohttp',
+        'pyyaml',
+        'python-dotenv',
+        'firecrawl',
+        'alembic',
+        'sqlalchemy',
+        'passlib',
+        'python-jose',
+        'python-multipart',
+        'beautifulsoup4'
+    ]
+    
+    failed_imports = []
+    
+    for module in modules:
         try:
-            __import__(dep)
-            print(f"✅ {dep}")
-        except ImportError:
-            print(f"❌ {dep} - MISSING")
+            importlib.import_module(module)
+            print(f"✅ {module}")
+        except ImportError as e:
+            print(f"❌ {module}: {e}")
+            failed_imports.append(module)
     
+    if failed_imports:
+        print(f"\n❌ Failed imports: {failed_imports}")
+    else:
+        print("\n✅ All imports successful")
     print()
 
-def check_configuration():
-    """Check configuration loading."""
-    print("=== Configuration ===")
+def check_app_imports():
+    """Check if app modules can be imported."""
+    print("🔍 App Import Check")
+    print("=" * 40)
     
-    try:
-        from app.utils.config import ConfigManager
-        config = ConfigManager()
-        print(f"✅ Configuration loaded successfully")
-        print(f"Found {len(config.sites)} sites")
-        for site_id, site in config.sites.items():
-            print(f"  - {site_id}: {site.name}")
-    except Exception as e:
-        print(f"❌ Configuration loading failed: {e}")
-        import traceback
-        traceback.print_exc()
+    app_modules = [
+        'app.main',
+        'app.routers.listeners',
+        'app.routers.dashboard',
+        'app.crawler.change_detector',
+        'app.utils.config',
+        'app.utils.json_writer'
+    ]
     
-    print()
-
-def check_app_import():
-    """Check if the app can be imported."""
-    print("=== App Import ===")
+    failed_imports = []
     
-    try:
-        from app.main import app
-        print("✅ App imported successfully")
-    except Exception as e:
-        print(f"❌ App import failed: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    print()
-
-def check_port_availability():
-    """Check if the port is available."""
-    print("=== Port Availability ===")
-    
-    port = int(os.getenv('PORT', '8000'))
-    hosts = ['localhost', '127.0.0.1', '0.0.0.0']
-    
-    for host in hosts:
+    for module in app_modules:
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(5)
-                result = sock.connect_ex((host, port))
-                if result == 0:
-                    print(f"✅ Port {port} is open on {host}")
-                else:
-                    print(f"❌ Port {port} is closed on {host}")
+            importlib.import_module(module)
+            print(f"✅ {module}")
+        except ImportError as e:
+            print(f"❌ {module}: {e}")
+            failed_imports.append(module)
         except Exception as e:
-            print(f"❌ Error checking port {port} on {host}: {e}")
+            print(f"⚠️ {module}: {e}")
+            failed_imports.append(module)
     
+    if failed_imports:
+        print(f"\n❌ Failed app imports: {failed_imports}")
+    else:
+        print("\n✅ All app imports successful")
     print()
 
-def check_health_endpoints():
-    """Check health endpoints."""
-    print("=== Health Endpoints ===")
+def check_files():
+    """Check if important files exist."""
+    print("🔍 File Check")
+    print("=" * 40)
     
-    port = int(os.getenv('PORT', '8000'))
-    hosts = ['localhost', '127.0.0.1', '0.0.0.0']
-    endpoints = ['/ping', '/health', '/']
+    files = [
+        'requirements.txt',
+        'Dockerfile',
+        'start_simple.py',
+        'app/main.py',
+        'config/sites.yaml',
+        'output'
+    ]
     
-    for host in hosts:
-        print(f"Testing {host}:")
-        for endpoint in endpoints:
-            url = f"http://{host}:{port}{endpoint}"
-            try:
-                response = requests.get(url, timeout=5)
-                print(f"  {endpoint}: {response.status_code} - {response.text[:50]}...")
-            except requests.exceptions.RequestException as e:
-                print(f"  {endpoint}: ERROR - {e}")
-        print()
+    for file_path in files:
+        if os.path.exists(file_path):
+            if os.path.isdir(file_path):
+                print(f"✅ {file_path} (directory)")
+            else:
+                size = os.path.getsize(file_path)
+                print(f"✅ {file_path} ({size} bytes)")
+        else:
+            print(f"❌ {file_path} (missing)")
+    print()
 
-def check_processes():
-    """Check running processes."""
-    print("=== Running Processes ===")
+def check_port():
+    """Check if the port is available."""
+    print("🔍 Port Check")
+    print("=" * 40)
+    
+    port = os.getenv('PORT', '8000')
+    print(f"Target port: {port}")
     
     try:
-        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
-        lines = result.stdout.split('\n')
-        for line in lines:
-            if 'python' in line or 'uvicorn' in line:
-                print(line)
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            result = sock.connect_ex(('localhost', int(port)))
+            if result == 0:
+                print(f"❌ Port {port} is already in use")
+            else:
+                print(f"✅ Port {port} is available")
     except Exception as e:
-        print(f"Error checking processes: {e}")
-    
+        print(f"⚠️ Could not check port: {e}")
     print()
 
 def main():
-    """Run all diagnostic checks."""
-    print("🔍 Railway Deployment Diagnostics")
+    print("🚀 Astral Aggregator Diagnostic Tool")
     print("=" * 50)
+    print()
     
-    checks = [
-        ("Environment", check_environment),
-        ("Dependencies", check_dependencies),
-        ("Configuration", check_configuration),
-        ("App Import", check_app_import),
-        ("Port Availability", check_port_availability),
-        ("Health Endpoints", check_health_endpoints),
-        ("Processes", check_processes),
-    ]
+    check_environment()
+    check_imports()
+    check_app_imports()
+    check_files()
+    check_port()
     
-    for name, check_func in checks:
-        try:
-            check_func()
-        except Exception as e:
-            print(f"❌ {name} check failed: {e}")
-            print()
+    print("🔍 Summary")
+    print("=" * 40)
+    print("Diagnostic complete. Check the output above for any issues.")
+    print("Common issues:")
+    print("- Missing dependencies: Check requirements.txt")
+    print("- Import errors: Check module paths and dependencies")
+    print("- Port conflicts: Check if another service is using the port")
+    print("- File permissions: Ensure files are readable")
 
 if __name__ == "__main__":
     main() 
