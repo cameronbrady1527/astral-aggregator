@@ -215,6 +215,12 @@ class TestChangeDetectionIntegration:
         site2 = next(site for site in sites if site["site_id"] == "test_site_2")
         assert site1["name"] == "Test Site 1"
         assert site2["name"] == "Test Site 2"
+        
+        # Check that check_interval_minutes is included
+        assert "check_interval_minutes" in site1
+        assert "check_interval_minutes" in site2
+        assert site1["check_interval_minutes"] == 1440  # Default value from config
+        assert site2["check_interval_minutes"] == 1440  # Default value from config
     
     @pytest.mark.integration
     def test_get_site_status(self, temp_config_file):

@@ -629,27 +629,25 @@ async def dashboard():
                     if (data.detection_status.is_running) {
                         progressContainer.style.display = 'block';
                         progressContainer.innerHTML = `
-                            <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4 rounded">
-                                <div class="flex">
-                                    <div class="flex-shrink-0">
-                                        <svg class="h-5 w-5 text-blue-400 animate-spin" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
-                                        </svg>
+                            <div class="card" style="background: #e3f2fd; border-left: 4px solid #2196f3; margin-bottom: 20px;">
+                                <div style="display: flex; align-items: flex-start;">
+                                    <div style="margin-right: 15px;">
+                                        <div class="spinner" style="width: 30px; height: 30px; border-top-color: #2196f3;"></div>
                                     </div>
-                                    <div class="ml-3">
-                                        <h3 class="text-sm font-medium text-blue-800">
+                                    <div style="flex: 1;">
+                                        <h3 style="color: #1976d2; font-size: 1.1rem; margin-bottom: 10px; font-weight: 600;">
                                             🔄 Detection in Progress: ${data.detection_status.current_site}
                                         </h3>
-                                        <div class="mt-2 text-sm text-blue-700">
-                                            <p>${data.detection_status.message}</p>
-                                            <div class="mt-2">
-                                                <div class="bg-blue-200 rounded-full h-2">
-                                                    <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: ${data.detection_status.progress}%"></div>
+                                        <div style="color: #1565c0; font-size: 0.9rem;">
+                                            <p style="margin-bottom: 10px;">${data.detection_status.message}</p>
+                                            <div style="margin-top: 10px;">
+                                                <div style="background: #bbdefb; border-radius: 10px; height: 8px; overflow: hidden;">
+                                                    <div style="background: #2196f3; height: 100%; transition: width 0.3s ease; width: ${data.detection_status.progress}%;"></div>
                                                 </div>
-                                                <p class="mt-1 text-xs">${data.detection_status.progress}% complete</p>
-                                                ${data.detection_status.elapsed_time ? `<p class="text-xs">Elapsed: ${data.detection_status.elapsed_time}</p>` : ''}
-                                                ${data.detection_status.estimated_time_remaining ? `<p class="text-xs">ETA: ${data.detection_status.estimated_time_remaining}</p>` : ''}
-                                                ${data.detection_status.current_method ? `<p class="text-xs">Method: ${data.detection_status.current_method}</p>` : ''}
+                                                <p style="margin-top: 5px; font-size: 0.8rem; color: #1976d2;">${data.detection_status.progress}% complete</p>
+                                                ${data.detection_status.elapsed_time ? `<p style="font-size: 0.8rem; color: #1976d2; margin: 2px 0;">Elapsed: ${data.detection_status.elapsed_time}</p>` : ''}
+                                                ${data.detection_status.estimated_time_remaining ? `<p style="font-size: 0.8rem; color: #1976d2; margin: 2px 0;">ETA: ${data.detection_status.estimated_time_remaining}</p>` : ''}
+                                                ${data.detection_status.current_method ? `<p style="font-size: 0.8rem; color: #1976d2; margin: 2px 0;">Method: ${data.detection_status.current_method}</p>` : ''}
                                             </div>
                                         </div>
                                     </div>

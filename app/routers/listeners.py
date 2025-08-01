@@ -190,11 +190,23 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
         
         # Check if detection is already running
         if current_detection_status["is_running"]:
-            return {
-                "status": "already_running",
-                "message": f"Detection already running for {current_detection_status['current_site']}",
-                "progress_url": "/api/listeners/progress"
-            }
+            # Check if it's been running for more than 10 minutes (likely stuck)
+            if current_detection_status["start_time"]:
+                elapsed = datetime.now() - current_detection_status["start_time"]
+                if elapsed.total_seconds() > 600:  # 10 minutes
+                    # Reset stuck detection
+                    update_detection_status(
+                        is_running=False,
+                        current_site=None,
+                        progress=0,
+                        message="Reset stuck detection"
+                    )
+                else:
+                    return {
+                        "status": "already_running",
+                        "message": f"Detection already running for {current_detection_status['current_site']}",
+                        "progress_url": "/api/listeners/progress"
+                    }
         
         # Initialize progress tracking
         update_detection_status(
@@ -459,9 +471,10 @@ async def get_system_analytics() -> Dict[str, Any]:
             if not site_config:
                 continue
                 
-            # Get recent changes for this site
+            # Get recent changes and state for this site
             change_files = change_detector.writer.list_change_files(site_config.name)
             actual_change_files = [f for f in change_files if "state" not in f.lower()]
+            state_files = [f for f in change_files if "state" in f.lower()]
             
             site_total_changes = 0
             site_new_pages = 0
@@ -469,6 +482,16 @@ async def get_system_analytics() -> Dict[str, Any]:
             site_deleted_pages = 0
             site_urls = 0
             last_detection = None
+            
+            # Get current URL count from latest state file
+            if state_files:
+                try:
+                    latest_state_file = state_files[0]  # Most recent state file
+                    state_data = change_detector.writer.read_json_file(latest_state_file)
+                    sitemap_state = state_data.get("state", {}).get("sitemap_state", {})
+                    site_urls = sitemap_state.get("total_urls", 0)
+                except Exception:
+                    pass
             
             # Analyze recent change files
             for file_path in actual_change_files[:10]:  # Last 10 detections
@@ -479,12 +502,6 @@ async def get_system_analytics() -> Dict[str, Any]:
                     if detection_time:
                         if not last_detection or detection_time > last_detection:
                             last_detection = detection_time
-                        
-                        # Get URL counts from sitemap method
-                        sitemap_data = change_data.get("changes", {}).get("methods", {}).get("sitemap", {})
-                        if sitemap_data:
-                            metadata = sitemap_data.get("metadata", {})
-                            site_urls = max(site_urls, metadata.get("current_urls", 0))
                         
                         # Get change counts
                         summary = change_data.get("changes", {}).get("summary", {})
@@ -652,24 +669,31 @@ async def get_realtime_status() -> Dict[str, Any]:
             if not site_config:
                 continue
             
-            # Get the most recent detection
+            # Get the most recent detection and state
             change_files = change_detector.writer.list_change_files(site_config.name)
             actual_change_files = [f for f in change_files if "state" not in f.lower()]
+            state_files = [f for f in change_files if "state" in f.lower()]
             
             last_detection = None
             current_urls = 0
             last_change_count = 0
             
+            # Get current URL count from latest state file
+            if state_files:
+                try:
+                    latest_state_file = state_files[0]  # Most recent state file
+                    state_data = change_detector.writer.read_json_file(latest_state_file)
+                    sitemap_state = state_data.get("state", {}).get("sitemap_state", {})
+                    current_urls = sitemap_state.get("total_urls", 0)
+                except Exception:
+                    pass
+            
+            # Get detection info from latest change file
             if actual_change_files:
                 try:
                     latest_file = actual_change_files[0]  # Most recent file
                     change_data = change_detector.writer.read_json_file(latest_file)
                     last_detection = change_data.get("metadata", {}).get("detection_time")
-                    
-                    # Get current URL count
-                    sitemap_data = change_data.get("changes", {}).get("methods", {}).get("sitemap", {})
-                    if sitemap_data:
-                        current_urls = sitemap_data.get("metadata", {}).get("current_urls", 0)
                     
                     # Get last change count
                     summary = change_data.get("changes", {}).get("summary", {})

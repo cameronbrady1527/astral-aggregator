@@ -136,8 +136,8 @@ class TestListenersAPI:
     def test_get_system_status(self, client, mock_change_detector):
         """Test getting system status."""
         mock_sites = [
-            {"site_id": "site1", "name": "Site 1", "is_active": True},
-            {"site_id": "site2", "name": "Site 2", "is_active": False}
+            {"site_id": "site1", "name": "Site 1", "is_active": True, "check_interval_minutes": 1440},
+            {"site_id": "site2", "name": "Site 2", "is_active": False, "check_interval_minutes": 1440}
         ]
         mock_change_detector.list_sites.return_value = mock_sites
         
@@ -164,8 +164,8 @@ class TestListenersAPI:
     def test_list_sites(self, client, mock_change_detector):
         """Test listing all sites."""
         mock_sites = [
-            {"site_id": "site1", "name": "Site 1", "is_active": True},
-            {"site_id": "site2", "name": "Site 2", "is_active": False}
+            {"site_id": "site1", "name": "Site 1", "is_active": True, "check_interval_minutes": 1440},
+            {"site_id": "site2", "name": "Site 2", "is_active": False, "check_interval_minutes": 1440}
         ]
         mock_change_detector.list_sites.return_value = mock_sites
         
@@ -282,8 +282,8 @@ class TestListenersAPI:
         """Test getting all changes."""
         # Mock sites
         mock_sites = [
-            {"site_id": "site1", "name": "Site 1"},
-            {"site_id": "site2", "name": "Site 2"}
+            {"site_id": "site1", "name": "Site 1", "check_interval_minutes": 1440},
+            {"site_id": "site2", "name": "Site 2", "check_interval_minutes": 1440}
         ]
         mock_change_detector.list_sites.return_value = mock_sites
         
@@ -312,8 +312,8 @@ class TestListenersAPI:
         """Test getting all changes with limit parameter."""
         # Mock sites
         mock_sites = [
-            {"site_id": "site1", "name": "Site 1"},
-            {"site_id": "site2", "name": "Site 2"}
+            {"site_id": "site1", "name": "Site 1", "check_interval_minutes": 1440},
+            {"site_id": "site2", "name": "Site 2", "check_interval_minutes": 1440}
         ]
         mock_change_detector.list_sites.return_value = mock_sites
         

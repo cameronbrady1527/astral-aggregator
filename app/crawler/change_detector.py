@@ -165,6 +165,7 @@ class ChangeDetector:
                 "name": site_config.name,
                 "url": site_config.url,
                 "is_active": site_config.is_active,
-                "detection_methods": site_config.detection_methods
+                "detection_methods": site_config.detection_methods,
+                "check_interval_minutes": site_config.check_interval_minutes
             })
         return sites 
