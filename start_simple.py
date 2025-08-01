@@ -18,11 +18,13 @@ def main():
     logger.info("🚀 Starting Astral Aggregator (Simple startup script)...")
     
     # Set essential environment variables
-    os.environ['PYTHONPATH'] = '/app'
+    current_dir = os.getcwd()
+    os.environ['PYTHONPATH'] = current_dir
     os.environ['PYTHONUNBUFFERED'] = '1'
     
-    logger.info(f"Current directory: {os.getcwd()}")
+    logger.info(f"Current directory: {current_dir}")
     logger.info(f"Python version: {sys.version}")
+    logger.info(f"PYTHONPATH set to: {current_dir}")
     
     # Create output directory
     try:
