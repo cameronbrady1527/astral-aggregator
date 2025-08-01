@@ -12,10 +12,13 @@ sites:
     detection_methods: ['sitemap']  # Use only sitemap for Railway (lighter)
     check_interval_minutes: 1440
     is_active: true
-    # Disable heavy operations for Railway
-    enable_content_detection: false
-    max_content_pages: 5  # Reduced for Railway
-    content_timeout: 5  # Shorter timeout
+    # Content detection settings
+    enable_content_detection: true
+    content_check_interval: 24  # Check content every 24 hours
+    max_content_pages: 20  # Check content of top 20 pages
+    content_timeout: 10  # 10 second timeout per page
+    content_selectors: ['main', 'article', '.content', '#content', '.main-content']
+    exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
 
   judiciary_uk:
     name: 'Judiciary UK'

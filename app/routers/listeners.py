@@ -534,15 +534,90 @@ async def get_system_analytics() -> Dict[str, Any]:
                 try:
                     latest_state_file = state_files[0]  # Most recent state file
                     state_data = change_detector.writer.read_json_file(latest_state_file)
+                    
+                    # Try multiple paths to find URL count
+                    site_urls = 0
+                    
+                    # Method 1: Direct sitemap_state.total_urls
                     sitemap_state = state_data.get("state", {}).get("sitemap_state", {})
-                    # The total_urls is directly in sitemap_state, not nested
-                    site_urls = sitemap_state.get("total_urls", 0)
-                    # If not found, try to count the URLs array
-                    if site_urls == 0 and "urls" in sitemap_state:
+                    if sitemap_state:
+                        site_urls = sitemap_state.get("total_urls", 0)
+                    
+                    # Method 2: Count URLs array if total_urls is 0
+                    if site_urls == 0 and sitemap_state and "urls" in sitemap_state:
                         site_urls = len(sitemap_state["urls"])
+                    
+                    # Method 3: Look for URLs in other state sections
+                    if site_urls == 0:
+                        # Check if there are other state sections with URL data
+                        state = state_data.get("state", {})
+                        for key, value in state.items():
+                            if isinstance(value, dict) and "urls" in value:
+                                if isinstance(value["urls"], list):
+                                    site_urls = len(value["urls"])
+                                    break
+                                elif isinstance(value["urls"], int):
+                                    site_urls = value["urls"]
+                                    break
+                    
+                    # Method 4: Look for total_urls in any state section
+                    if site_urls == 0:
+                        state = state_data.get("state", {})
+                        for key, value in state.items():
+                            if isinstance(value, dict) and "total_urls" in value:
+                                site_urls = value["total_urls"]
+                                break
+                    
+                    print(f"Found {site_urls} URLs for {site_config.name} using state file")
+                    
                 except Exception as e:
                     print(f"Error reading state file for {site_config.name}: {e}")
-                    pass
+                    site_urls = 0
+            
+            # Fallback: If no URLs found in state file, try to get from recent change files
+            if site_urls == 0 and actual_change_files:
+                try:
+                    # Look through recent change files for URL data
+                    for file_path in actual_change_files[:3]:  # Check last 3 files
+                        try:
+                            change_data = change_detector.writer.read_json_file(file_path)
+                            changes_data = change_data.get("changes", {})
+                            
+                            # Look for URL data in methods
+                            if "methods" in changes_data:
+                                for method_name, method_data in changes_data["methods"].items():
+                                    if isinstance(method_data, dict):
+                                        # Check for URL data in metadata
+                                        metadata = method_data.get("metadata", {})
+                                        if metadata:
+                                            # Try different possible URL count fields
+                                            for field in ["current_urls", "total_urls", "urls_count"]:
+                                                if field in metadata:
+                                                    site_urls = metadata[field]
+                                                    print(f"Found {site_urls} URLs for {site_config.name} from change file metadata")
+                                                    break
+                                            if site_urls > 0:
+                                                break
+                                        
+                                        # Check for URL data in sitemap_info
+                                        sitemap_info = method_data.get("sitemap_info", {})
+                                        if sitemap_info and "total_urls" in sitemap_info:
+                                            site_urls = sitemap_info["total_urls"]
+                                            print(f"Found {site_urls} URLs for {site_config.name} from sitemap_info")
+                                            break
+                                    
+                                    if site_urls > 0:
+                                        break
+                            
+                            if site_urls > 0:
+                                break
+                                
+                        except Exception as e:
+                            print(f"Error reading change file {file_path}: {e}")
+                            continue
+                            
+                except Exception as e:
+                    print(f"Error in fallback URL extraction for {site_config.name}: {e}")
             
             # Analyze recent change files
             for file_path in actual_change_files[:10]:  # Last 10 detections
@@ -557,23 +632,50 @@ async def get_system_analytics() -> Dict[str, Any]:
                         # Get change counts from the changes data
                         changes_data = change_data.get("changes", {})
                         
-                        # Check if there's a direct summary (for older format)
+                        # Method 1: Check for direct summary (for older format)
                         summary = changes_data.get("summary", {})
                         
-                        # If no direct summary, check methods for summary
+                        # Method 2: If no direct summary, check methods for summary
                         if not summary and "methods" in changes_data:
                             for method_name, method_data in changes_data["methods"].items():
-                                method_summary = method_data.get("summary", {})
-                                site_total_changes += method_summary.get("total_changes", 0)
-                                site_new_pages += method_summary.get("new_pages", 0)
-                                site_modified_pages += method_summary.get("modified_pages", 0)
-                                site_deleted_pages += method_summary.get("deleted_pages", 0)
+                                if isinstance(method_data, dict):
+                                    method_summary = method_data.get("summary", {})
+                                    site_total_changes += method_summary.get("total_changes", 0)
+                                    site_new_pages += method_summary.get("new_pages", 0)
+                                    site_modified_pages += method_summary.get("modified_pages", 0)
+                                    site_deleted_pages += method_summary.get("deleted_pages", 0)
                         else:
                             # Use direct summary
                             site_total_changes += summary.get("total_changes", 0)
                             site_new_pages += summary.get("new_pages", 0)
                             site_modified_pages += summary.get("modified_pages", 0)
                             site_deleted_pages += summary.get("deleted_pages", 0)
+                        
+                        # Method 3: Fallback - look for any summary-like data in the changes
+                        if site_total_changes == 0:
+                            # Search recursively for summary data
+                            def find_summary_data(obj, path=""):
+                                if isinstance(obj, dict):
+                                    for key, value in obj.items():
+                                        if key == "summary" and isinstance(value, dict):
+                                            return value
+                                        elif isinstance(value, (dict, list)):
+                                            result = find_summary_data(value, f"{path}.{key}")
+                                            if result:
+                                                return result
+                                elif isinstance(obj, list):
+                                    for i, item in enumerate(obj):
+                                        result = find_summary_data(item, f"{path}[{i}]")
+                                        if result:
+                                            return result
+                                return None
+                            
+                            fallback_summary = find_summary_data(changes_data)
+                            if fallback_summary:
+                                site_total_changes += fallback_summary.get("total_changes", 0)
+                                site_new_pages += fallback_summary.get("new_pages", 0)
+                                site_modified_pages += fallback_summary.get("modified_pages", 0)
+                                site_deleted_pages += fallback_summary.get("deleted_pages", 0)
                         
                 except Exception as e:
                     print(f"Error processing change file {file_path}: {e}")
@@ -749,14 +851,90 @@ async def get_realtime_status() -> Dict[str, Any]:
                 try:
                     latest_state_file = state_files[0]  # Most recent state file
                     state_data = change_detector.writer.read_json_file(latest_state_file)
+                    
+                    # Try multiple paths to find URL count
+                    current_urls = 0
+                    
+                    # Method 1: Direct sitemap_state.total_urls
                     sitemap_state = state_data.get("state", {}).get("sitemap_state", {})
-                    current_urls = sitemap_state.get("total_urls", 0)
-                    # If not found, try to count the URLs array
-                    if current_urls == 0 and "urls" in sitemap_state:
+                    if sitemap_state:
+                        current_urls = sitemap_state.get("total_urls", 0)
+                    
+                    # Method 2: Count URLs array if total_urls is 0
+                    if current_urls == 0 and sitemap_state and "urls" in sitemap_state:
                         current_urls = len(sitemap_state["urls"])
+                    
+                    # Method 3: Look for URLs in other state sections
+                    if current_urls == 0:
+                        # Check if there are other state sections with URL data
+                        state = state_data.get("state", {})
+                        for key, value in state.items():
+                            if isinstance(value, dict) and "urls" in value:
+                                if isinstance(value["urls"], list):
+                                    current_urls = len(value["urls"])
+                                    break
+                                elif isinstance(value["urls"], int):
+                                    current_urls = value["urls"]
+                                    break
+                    
+                    # Method 4: Look for total_urls in any state section
+                    if current_urls == 0:
+                        state = state_data.get("state", {})
+                        for key, value in state.items():
+                            if isinstance(value, dict) and "total_urls" in value:
+                                current_urls = value["total_urls"]
+                                break
+                    
+                    print(f"Found {current_urls} URLs for {site_config.name} in realtime")
+                    
                 except Exception as e:
                     print(f"Error reading state file for {site_config.name}: {e}")
-                    pass
+                    current_urls = 0
+            
+            # Fallback: If no URLs found in state file, try to get from recent change files
+            if current_urls == 0 and actual_change_files:
+                try:
+                    # Look through recent change files for URL data
+                    for file_path in actual_change_files[:3]:  # Check last 3 files
+                        try:
+                            change_data = change_detector.writer.read_json_file(file_path)
+                            changes_data = change_data.get("changes", {})
+                            
+                            # Look for URL data in methods
+                            if "methods" in changes_data:
+                                for method_name, method_data in changes_data["methods"].items():
+                                    if isinstance(method_data, dict):
+                                        # Check for URL data in metadata
+                                        metadata = method_data.get("metadata", {})
+                                        if metadata:
+                                            # Try different possible URL count fields
+                                            for field in ["current_urls", "total_urls", "urls_count"]:
+                                                if field in metadata:
+                                                    current_urls = metadata[field]
+                                                    print(f"Found {current_urls} URLs for {site_config.name} from change file metadata in realtime")
+                                                    break
+                                            if current_urls > 0:
+                                                break
+                                        
+                                        # Check for URL data in sitemap_info
+                                        sitemap_info = method_data.get("sitemap_info", {})
+                                        if sitemap_info and "total_urls" in sitemap_info:
+                                            current_urls = sitemap_info["total_urls"]
+                                            print(f"Found {current_urls} URLs for {site_config.name} from sitemap_info in realtime")
+                                            break
+                                    
+                                    if current_urls > 0:
+                                        break
+                            
+                            if current_urls > 0:
+                                break
+                                
+                        except Exception as e:
+                            print(f"Error reading change file {file_path}: {e}")
+                            continue
+                            
+                except Exception as e:
+                    print(f"Error in fallback URL extraction for {site_config.name} in realtime: {e}")
             
             # Get detection info from latest change file
             if actual_change_files:
@@ -768,17 +946,41 @@ async def get_realtime_status() -> Dict[str, Any]:
                     # Get last change count from the changes data
                     changes_data = change_data.get("changes", {})
                     
-                    # Check if there's a direct summary (for older format)
+                    # Method 1: Check for direct summary (for older format)
                     summary = changes_data.get("summary", {})
                     
-                    # If no direct summary, check methods for summary
+                    # Method 2: If no direct summary, check methods for summary
                     if not summary and "methods" in changes_data:
                         for method_name, method_data in changes_data["methods"].items():
-                            method_summary = method_data.get("summary", {})
-                            last_change_count += method_summary.get("total_changes", 0)
+                            if isinstance(method_data, dict):
+                                method_summary = method_data.get("summary", {})
+                                last_change_count += method_summary.get("total_changes", 0)
                     else:
                         # Use direct summary
                         last_change_count = summary.get("total_changes", 0)
+                    
+                    # Method 3: Fallback - look for any summary-like data in the changes
+                    if last_change_count == 0:
+                        # Search recursively for summary data
+                        def find_summary_data(obj, path=""):
+                            if isinstance(obj, dict):
+                                for key, value in obj.items():
+                                    if key == "summary" and isinstance(value, dict):
+                                        return value
+                                    elif isinstance(value, (dict, list)):
+                                        result = find_summary_data(value, f"{path}.{key}")
+                                        if result:
+                                            return result
+                            elif isinstance(obj, list):
+                                for i, item in enumerate(obj):
+                                    result = find_summary_data(item, f"{path}[{i}]")
+                                    if result:
+                                        return result
+                            return None
+                        
+                        fallback_summary = find_summary_data(changes_data)
+                        if fallback_summary:
+                            last_change_count = fallback_summary.get("total_changes", 0)
                     
                 except Exception as e:
                     print(f"Error processing change file {latest_file}: {e}")
