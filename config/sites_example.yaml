@@ -44,11 +44,12 @@ firecrawl:
   wait_for: 100  # Reduced wait time (ms)
   timeout: 15000  # 15 second timeout per page
   max_age: 3600000  # 1 hour cache for 500% speed boost
-  include_js: false  # Disable JS for speed
-  include_images: false  # Disable images for speed
-  follow_redirects: false  # Skip redirects for speed
-  retry_on_failure: false  # Don't retry failed pages
-  # Note: max_pages, max_requests_per_second, and max_depth are not supported by Firecrawl SDK
+  cache_duration_hours: 24
+  adaptive_timeout: true
+  max_retries: 3
+  backoff_factor: 2.0
+  parallel_processing: true
+  incremental_crawl: true
 
 system:
   output_directory: 'output'
