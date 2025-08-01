@@ -28,9 +28,5 @@ EXPOSE 8000
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Health check with longer timeout for Railway
-HEALTHCHECK --interval=60s --timeout=30s --start-period=300s --retries=5 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/ping', timeout=10)" || exit 1
-
-# Start the application using consolidated startup script
-CMD ["python", "scripts/start.py"] 
+# Start the application using Railway-optimized startup script
+CMD ["python", "scripts/railway_start.py"] 

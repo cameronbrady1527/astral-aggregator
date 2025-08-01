@@ -1,58 +1,31 @@
 #!/usr/bin/env python3
 """
-Simple health check script for Railway deployment.
-This is a minimal version that focuses on basic functionality.
+Simple healthcheck script for Railway
+Minimal and fast health check
 """
 
 import os
 import sys
-import requests
-import time
+import urllib.request
+import urllib.error
 
-def simple_health_check():
-    """Simple health check that just tries to connect."""
+def main():
+    """Simple health check for Railway."""
     try:
-        # Get port from environment
-        port = os.getenv('PORT', '8000')
-        
-        # Try the simplest possible check - just connect to localhost
+        port = os.environ.get('PORT', '8000')
         url = f"http://localhost:{port}/ping"
         
-        # Very short timeout for quick failure
-        response = requests.get(url, timeout=5)
-        
-        if response.status_code == 200:
-            print(f"✅ Health check passed: {response.text}")
-            return True
-        else:
-            print(f"❌ Health check failed: status {response.status_code}")
-            return False
-            
-    except requests.exceptions.ConnectionError:
-        print("❌ Connection refused - app may not be running")
-        return False
-    except requests.exceptions.Timeout:
-        print("❌ Request timeout")
-        return False
+        with urllib.request.urlopen(url, timeout=5) as response:
+            if response.getcode() == 200:
+                print("✅ Health check passed")
+                sys.exit(0)
+            else:
+                print(f"❌ Health check failed: status {response.getcode()}")
+                sys.exit(1)
+                
     except Exception as e:
         print(f"❌ Health check error: {e}")
-        return False
+        sys.exit(1)
 
 if __name__ == "__main__":
-    # Wait a bit for startup
-    print("Waiting 60 seconds for app to start...")
-    time.sleep(60)
-    
-    # Try a few times
-    for attempt in range(3):
-        print(f"Health check attempt {attempt + 1}/3")
-        if simple_health_check():
-            print("✅ Health check successful")
-            sys.exit(0)
-        
-        if attempt < 2:
-            print("Waiting 30 seconds before retry...")
-            time.sleep(30)
-    
-    print("❌ All health check attempts failed")
-    sys.exit(1) 
+    main() 
