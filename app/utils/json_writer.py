@@ -79,7 +79,7 @@ class ChangeDetectionWriter:
         
         return str(filepath)
     
-    def get_latest_state_file(self, site_name: str, method: str = None) -> str | None:
+    def get_latest_state_file(self, site_name: str, method: str = None, exclude_current_run: bool = True) -> str | None:
         """Get the path to the most recent state file for a site across all run folders."""
         if method:
             pattern = f"{site_name}_state_{method}_*.json"
@@ -90,13 +90,49 @@ class ChangeDetectionWriter:
         # Search in all run folders
         for run_folder in self.output_dir.iterdir():
             if run_folder.is_dir():
+                # Skip current run folder if exclude_current_run is True
+                if exclude_current_run and str(run_folder) == str(self.run_folder):
+                    continue
                 state_files.extend(run_folder.glob(pattern))
         
         if not state_files:
             return None
         
-        latest_file = max(state_files, key=lambda x: x.stat().st_mtime)
-        return str(latest_file)
+        # Sort by modification time and get the most recent
+        state_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+        return str(state_files[0])
+    
+    def get_previous_state_file(self, site_name: str, method: str = None) -> str | None:
+        """Get the path to the most recent state file from a previous run (not current run)."""
+        if method:
+            pattern = f"{site_name}_state_{method}_*.json"
+        else:
+            pattern = f"{site_name}_state_*.json"
+        state_files = []
+        
+        # Get current run date
+        current_run_date = self.run_folder.name.split('_')[0]  # Extract date part (YYYYMMDD)
+        
+        # Search in all run folders except the current one
+        for run_folder in self.output_dir.iterdir():
+            if run_folder.is_dir():
+                # Always exclude current run folder for previous state
+                if str(run_folder) == str(self.run_folder):
+                    continue
+                
+                # Also exclude runs from the same day to avoid comparing against recent runs
+                run_folder_date = run_folder.name.split('_')[0]
+                if run_folder_date == current_run_date:
+                    continue
+                
+                state_files.extend(run_folder.glob(pattern))
+        
+        if not state_files:
+            return None
+        
+        # Sort by modification time and get the most recent
+        state_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+        return str(state_files[0])
     
     def read_json_file(self, filepath: str) -> Dict[str, Any]:
         """Read and parse a JSON file."""

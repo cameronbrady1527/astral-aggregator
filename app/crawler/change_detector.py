@@ -126,9 +126,10 @@ class ChangeDetector:
     async def _get_previous_state(self, site_name: str, method: str) -> Optional[Dict[str, Any]]:
         """Get the previous state for a site and method."""
         try:
-            latest_state_file = self.writer.get_latest_state_file(site_name, method)
-            if latest_state_file:
-                state_data = self.writer.read_json_file(latest_state_file)
+            # Use get_previous_state_file to ensure we get a state from a different run
+            previous_state_file = self.writer.get_previous_state_file(site_name, method)
+            if previous_state_file:
+                state_data = self.writer.read_json_file(previous_state_file)
                 return state_data.get("state")
         except Exception as e:
             print(f"Error reading previous state for {site_name}: {e}")

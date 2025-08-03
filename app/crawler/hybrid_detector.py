@@ -95,11 +95,11 @@ class HybridDetector(BaseDetector):
             # Add sitemap changes to result
             for change in sitemap_changes.changes:
                 result.add_change(
-                    change.change_type,
-                    change.url,
-                    change.title,
-                    change.description,
-                    change.metadata
+                    change["change_type"],
+                    change["url"],
+                    title=change.get("title", ""),
+                    description=change.get("description", ""),
+                    metadata=change.get("metadata", {})
                 )
             
             # Detect content changes (if enabled and should run)
@@ -115,11 +115,11 @@ class HybridDetector(BaseDetector):
                 # Add content changes to result
                 for change in content_changes.changes:
                     result.add_change(
-                        change.change_type,
-                        change.url,
-                        change.title,
-                        change.description,
-                        change.metadata
+                        change["change_type"],
+                        change["url"],
+                        title=change.get("title", ""),
+                        description=change.get("description", ""),
+                        metadata=change.get("metadata", {})
                     )
             
             # Update metadata

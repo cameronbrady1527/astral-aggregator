@@ -632,11 +632,8 @@ async def get_system_analytics() -> Dict[str, Any]:
                         # Get change counts from the changes data
                         changes_data = change_data.get("changes", {})
                         
-                        # Method 1: Check for direct summary (for older format)
-                        summary = changes_data.get("summary", {})
-                        
-                        # Method 2: If no direct summary, check methods for summary
-                        if not summary and "methods" in changes_data:
+                        # Method 1: Check methods for summary (new format)
+                        if "methods" in changes_data:
                             for method_name, method_data in changes_data["methods"].items():
                                 if isinstance(method_data, dict):
                                     method_summary = method_data.get("summary", {})
@@ -645,7 +642,8 @@ async def get_system_analytics() -> Dict[str, Any]:
                                     site_modified_pages += method_summary.get("modified_pages", 0)
                                     site_deleted_pages += method_summary.get("deleted_pages", 0)
                         else:
-                            # Use direct summary
+                            # Method 2: Check for direct summary (for older format)
+                            summary = changes_data.get("summary", {})
                             site_total_changes += summary.get("total_changes", 0)
                             site_new_pages += summary.get("new_pages", 0)
                             site_modified_pages += summary.get("modified_pages", 0)
@@ -1084,14 +1082,36 @@ async def get_historical_data(
                         
                         # Only include detections within the specified period
                         if detection_dt >= cutoff_date:
-                            summary = change_data.get("changes", {}).get("summary", {})
+                            changes_data = change_data.get("changes", {})
+                            
+                            # Calculate totals from methods (new format)
+                            total_changes = 0
+                            new_pages = 0
+                            modified_pages = 0
+                            deleted_pages = 0
+                            
+                            if "methods" in changes_data:
+                                for method_name, method_data in changes_data["methods"].items():
+                                    if isinstance(method_data, dict):
+                                        method_summary = method_data.get("summary", {})
+                                        total_changes += method_summary.get("total_changes", 0)
+                                        new_pages += method_summary.get("new_pages", 0)
+                                        modified_pages += method_summary.get("modified_pages", 0)
+                                        deleted_pages += method_summary.get("deleted_pages", 0)
+                            else:
+                                # Fallback to direct summary (older format)
+                                summary = changes_data.get("summary", {})
+                                total_changes = summary.get("total_changes", 0)
+                                new_pages = summary.get("new_pages", 0)
+                                modified_pages = summary.get("modified_pages", 0)
+                                deleted_pages = summary.get("deleted_pages", 0)
                             
                             detection_info = {
                                 "detection_time": detection_time,
-                                "total_changes": summary.get("total_changes", 0),
-                                "new_pages": summary.get("new_pages", 0),
-                                "modified_pages": summary.get("modified_pages", 0),
-                                "deleted_pages": summary.get("deleted_pages", 0)
+                                "total_changes": total_changes,
+                                "new_pages": new_pages,
+                                "modified_pages": modified_pages,
+                                "deleted_pages": deleted_pages
                             }
                             
                             site_history.append(detection_info)
