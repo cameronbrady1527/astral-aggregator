@@ -46,10 +46,10 @@ async def dashboard():
             }
             
             body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
                 min-height: 100vh;
-                color: #333;
+                color: #e2e8f0;
                 line-height: 1.6;
             }
             
@@ -68,21 +68,27 @@ async def dashboard():
             .header h1 {
                 font-size: 3.5rem;
                 margin-bottom: 10px;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-                font-weight: 300;
+                text-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                font-weight: 700;
+                background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
             }
             
             .header p {
                 font-size: 1.3rem;
                 opacity: 0.9;
-                font-weight: 300;
+                font-weight: 400;
+                color: #94a3b8;
             }
             
             .status-bar {
-                background: rgba(255,255,255,0.1);
-                backdrop-filter: blur(10px);
-                border-radius: 12px;
-                padding: 20px;
+                background: rgba(30, 41, 59, 0.8);
+                backdrop-filter: blur(20px);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                border-radius: 16px;
+                padding: 24px;
                 margin-bottom: 30px;
                 color: white;
                 display: flex;
@@ -90,6 +96,7 @@ async def dashboard():
                 align-items: center;
                 flex-wrap: wrap;
                 gap: 20px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
             }
             
             .status-item {
@@ -97,16 +104,22 @@ async def dashboard():
             }
             
             .status-number {
-                font-size: 2rem;
+                font-size: 2.2rem;
                 font-weight: 700;
                 display: block;
+                background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
             }
             
             .status-label {
                 font-size: 0.9rem;
                 opacity: 0.8;
                 text-transform: uppercase;
-                letter-spacing: 0.5px;
+                letter-spacing: 1px;
+                color: #94a3b8;
+                font-weight: 500;
             }
             
             .dashboard-grid {
@@ -117,31 +130,34 @@ async def dashboard():
             }
             
             .card {
-                background: white;
-                border-radius: 12px;
+                background: rgba(30, 41, 59, 0.8);
+                backdrop-filter: blur(20px);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                border-radius: 16px;
                 padding: 30px;
-                box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
                 transition: all 0.3s ease;
-                border: 1px solid rgba(255,255,255,0.2);
             }
             
             .card:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+                transform: translateY(-4px);
+                box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+                border-color: rgba(96, 165, 250, 0.3);
             }
             
             .card h3 {
-                color: #667eea;
+                color: #60a5fa;
                 margin-bottom: 20px;
                 font-size: 1.4rem;
                 font-weight: 600;
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: 12px;
             }
             
             .card-icon {
                 font-size: 1.6rem;
+                opacity: 0.9;
             }
             
             .stats-grid {
@@ -154,26 +170,28 @@ async def dashboard():
             .stat {
                 text-align: center;
                 padding: 20px;
-                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                border-radius: 8px;
-                border-left: 4px solid #667eea;
+                background: rgba(51, 65, 85, 0.6);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                border-radius: 12px;
+                border-left: 4px solid #60a5fa;
                 transition: transform 0.2s ease;
             }
             
             .stat:hover {
                 transform: scale(1.02);
+                background: rgba(51, 65, 85, 0.8);
             }
             
             .stat-number {
                 font-size: 2.2rem;
                 font-weight: 700;
-                color: #667eea;
+                color: #60a5fa;
                 margin-bottom: 5px;
             }
             
             .stat-label {
                 font-size: 0.9rem;
-                color: #6c757d;
+                color: #94a3b8;
                 font-weight: 500;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
@@ -188,7 +206,7 @@ async def dashboard():
             .btn {
                 padding: 14px 24px;
                 border: none;
-                border-radius: 8px;
+                border-radius: 12px;
                 cursor: pointer;
                 font-weight: 600;
                 text-decoration: none;
@@ -199,54 +217,58 @@ async def dashboard():
                 font-size: 0.95rem;
                 min-width: 140px;
                 justify-content: center;
+                backdrop-filter: blur(10px);
             }
             
             .btn-primary {
-                background: linear-gradient(135deg, #667eea 0%, #5a6fd8 100%);
+                background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
                 color: white;
-                box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+                box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+                border: 1px solid rgba(59, 130, 246, 0.2);
             }
             
             .btn-primary:hover {
-                background: linear-gradient(135deg, #5a6fd8 0%, #4a5fc8 100%);
+                background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
                 transform: translateY(-2px);
-                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+                box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
             }
             
             .btn-secondary {
-                background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
-                color: white;
-                box-shadow: 0 4px 15px rgba(108, 117, 125, 0.3);
+                background: rgba(71, 85, 105, 0.8);
+                color: #e2e8f0;
+                border: 1px solid rgba(148, 163, 184, 0.3);
             }
             
             .btn-secondary:hover {
-                background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
+                background: rgba(71, 85, 105, 1);
                 transform: translateY(-2px);
-                box-shadow: 0 6px 20px rgba(108, 117, 125, 0.4);
+                border-color: rgba(148, 163, 184, 0.5);
             }
             
             .btn-success {
-                background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
                 color: white;
-                box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+                box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+                border: 1px solid rgba(16, 185, 129, 0.2);
             }
             
             .btn-success:hover {
-                background: linear-gradient(135deg, #218838 0%, #1e7e34 100%);
+                background: linear-gradient(135deg, #059669 0%, #047857 100%);
                 transform: translateY(-2px);
-                box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+                box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
             }
             
             .btn-warning {
-                background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
-                color: #212529;
-                box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3);
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                color: white;
+                box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+                border: 1px solid rgba(245, 158, 11, 0.2);
             }
             
             .btn-warning:hover {
-                background: linear-gradient(135deg, #e0a800 0%, #d39e00 100%);
+                background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
                 transform: translateY(-2px);
-                box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4);
+                box-shadow: 0 8px 25px rgba(245, 158, 11, 0.4);
             }
             
             .site-list {
@@ -254,17 +276,19 @@ async def dashboard():
             }
             
             .site-item {
-                background: #f8f9fa;
-                border-radius: 8px;
+                background: rgba(51, 65, 85, 0.6);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                border-radius: 12px;
                 padding: 20px;
                 margin-bottom: 15px;
-                border-left: 4px solid #667eea;
+                border-left: 4px solid #60a5fa;
                 transition: all 0.3s ease;
             }
             
             .site-item:hover {
-                background: #e9ecef;
+                background: rgba(51, 65, 85, 0.8);
                 transform: translateX(5px);
+                border-color: rgba(96, 165, 250, 0.4);
             }
             
             .site-header {
@@ -276,26 +300,29 @@ async def dashboard():
             
             .site-name {
                 font-weight: 600;
-                color: #495057;
+                color: #e2e8f0;
                 font-size: 1.1rem;
             }
             
             .site-status {
-                padding: 4px 12px;
+                padding: 6px 16px;
                 border-radius: 20px;
                 font-size: 0.8rem;
                 font-weight: 600;
                 text-transform: uppercase;
+                letter-spacing: 0.5px;
             }
             
             .status-active {
-                background: #d4edda;
-                color: #155724;
+                background: rgba(16, 185, 129, 0.2);
+                color: #10b981;
+                border: 1px solid rgba(16, 185, 129, 0.3);
             }
             
             .status-inactive {
-                background: #f8d7da;
-                color: #721c24;
+                background: rgba(239, 68, 68, 0.2);
+                color: #ef4444;
+                border: 1px solid rgba(239, 68, 68, 0.3);
             }
             
             .site-details {
@@ -311,12 +338,12 @@ async def dashboard():
             
             .detail-value {
                 font-weight: 600;
-                color: #667eea;
+                color: #60a5fa;
                 font-size: 1.1rem;
             }
             
             .detail-label {
-                color: #6c757d;
+                color: #94a3b8;
                 font-size: 0.8rem;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
@@ -334,16 +361,17 @@ async def dashboard():
             }
             
             .change-item {
-                background: #f8f9fa;
-                border-radius: 8px;
+                background: rgba(51, 65, 85, 0.6);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                border-radius: 12px;
                 padding: 15px;
                 margin-bottom: 10px;
-                border-left: 4px solid #28a745;
+                border-left: 4px solid #10b981;
                 transition: all 0.3s ease;
             }
             
             .change-item:hover {
-                background: #e9ecef;
+                background: rgba(51, 65, 85, 0.8);
                 transform: translateX(5px);
             }
             
@@ -356,28 +384,28 @@ async def dashboard():
             
             .change-site {
                 font-weight: 600;
-                color: #495057;
+                color: #e2e8f0;
             }
             
             .change-time {
                 font-size: 0.8rem;
-                color: #6c757d;
+                color: #94a3b8;
             }
             
             .change-summary {
                 font-size: 0.9rem;
-                color: #6c757d;
+                color: #94a3b8;
             }
             
             .loading {
                 text-align: center;
                 padding: 40px;
-                color: #6c757d;
+                color: #94a3b8;
             }
             
             .spinner {
-                border: 4px solid #f3f3f3;
-                border-top: 4px solid #667eea;
+                border: 4px solid rgba(148, 163, 184, 0.2);
+                border-top: 4px solid #60a5fa;
                 border-radius: 50%;
                 width: 40px;
                 height: 40px;
@@ -391,27 +419,29 @@ async def dashboard():
             }
             
             .error {
-                background: #f8d7da;
-                color: #721c24;
+                background: rgba(239, 68, 68, 0.1);
+                color: #ef4444;
                 padding: 15px;
-                border-radius: 8px;
+                border-radius: 12px;
                 margin: 20px 0;
-                border-left: 4px solid #dc3545;
+                border-left: 4px solid #ef4444;
+                border: 1px solid rgba(239, 68, 68, 0.3);
             }
             
             .success {
-                background: #d4edda;
-                color: #155724;
+                background: rgba(16, 185, 129, 0.1);
+                color: #10b981;
                 padding: 15px;
-                border-radius: 8px;
+                border-radius: 12px;
                 margin: 20px 0;
-                border-left: 4px solid #28a745;
+                border-left: 4px solid #10b981;
+                border: 1px solid rgba(16, 185, 129, 0.3);
             }
             
             .tabs {
                 display: flex;
                 margin-bottom: 20px;
-                border-bottom: 2px solid #e9ecef;
+                border-bottom: 2px solid rgba(148, 163, 184, 0.2);
             }
             
             .tab {
@@ -420,15 +450,17 @@ async def dashboard():
                 border-bottom: 2px solid transparent;
                 transition: all 0.3s ease;
                 font-weight: 600;
+                color: #94a3b8;
             }
             
             .tab.active {
-                border-bottom-color: #667eea;
-                color: #667eea;
+                border-bottom-color: #60a5fa;
+                color: #60a5fa;
             }
             
             .tab:hover {
-                background: #f8f9fa;
+                background: rgba(51, 65, 85, 0.3);
+                color: #e2e8f0;
             }
             
             .tab-content {
@@ -443,12 +475,14 @@ async def dashboard():
                 position: fixed;
                 top: 20px;
                 right: 20px;
-                background: rgba(255,255,255,0.9);
-                padding: 10px 15px;
-                border-radius: 8px;
+                background: rgba(30, 41, 59, 0.9);
+                backdrop-filter: blur(20px);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                padding: 12px 18px;
+                border-radius: 12px;
                 font-size: 0.9rem;
-                color: #667eea;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                color: #60a5fa;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
                 z-index: 1000;
                 display: none;
             }
@@ -458,7 +492,7 @@ async def dashboard():
         <div class="container">
             <div class="header">
                 <h1>🌌 Astral</h1>
-                <p>Website Change Detection Dashboard</p>
+                <p>AI-Driven Infrastructure for Operational Intelligence</p>
             </div>
             
             <div class="refresh-indicator" id="refreshIndicator">
