@@ -24,22 +24,22 @@ sites:
     content_timeout: 10  # 10 second timeout per page
     content_selectors: ['main', 'article', '.content', '#content', '.main-content']
     exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
-    # Ultra-fast optimization settings (Phase 1) - Optimized for success rate
-    max_concurrent_requests: 50   # Conservative concurrency for better success rate
-    connection_pool_size: 100     # Connection pool sized for concurrency
-    batch_size: 500               # Process URLs in batches to manage memory
-    ultra_fast_timeout: 8         # Slightly longer timeout for reliability
+    # Ultra-fast optimization settings (Phase 1) - Optimized for 100% accuracy and SSL stability
+    max_concurrent_requests: 30   # Reduced from 50 for better SSL stability
+    connection_pool_size: 60      # Reduced from 100 to prevent connection exhaustion
+    batch_size: 200               # Smaller batches for better memory management
+    ultra_fast_timeout: 12        # Increased timeout for SSL stability
     # Adaptive rate limiting settings
     adaptive_rate_limiting: true  # Enable adaptive concurrency adjustment
-    min_concurrent_requests: 10   # Minimum concurrency level
-    success_rate_threshold: 0.95  # Target 95% success rate
-    rate_adjustment_factor: 0.8   # Reduce concurrency by 20% on failure
-    rate_increase_factor: 1.1     # Increase concurrency by 10% on success
+    min_concurrent_requests: 5    # Lower minimum for conservative approach
+    success_rate_threshold: 0.98  # Target 98% success rate (increased from 95%)
+    rate_adjustment_factor: 0.7   # Reduce concurrency by 30% on failure (more aggressive)
+    rate_increase_factor: 1.05    # Increase concurrency by 5% on success (more conservative)
     # Progressive concurrency ramping
     progressive_ramping: true     # Start with low concurrency and ramp up
-    ramp_start_concurrency: 5     # Start with 5 concurrent requests
-    ramp_target_concurrency: 50   # Target 50 concurrent requests
-    ramp_batch_size: 20           # Process 20 URLs per ramp step
+    ramp_start_concurrency: 3     # Start with 3 concurrent requests (reduced from 5)
+    ramp_target_concurrency: 30   # Target 30 concurrent requests (reduced from 50)
+    ramp_batch_size: 15           # Process 15 URLs per ramp step (reduced from 20)
 
   waverley_gov:
     name: 'Waverley Borough Council'
@@ -59,22 +59,22 @@ sites:
     content_timeout: 10
     content_selectors: ['main', 'article', '.content', '#content', '.main-content']
     exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
-    # Ultra-fast optimization settings - Optimized for success rate
-    max_concurrent_requests: 50
-    connection_pool_size: 100
-    batch_size: 500
-    ultra_fast_timeout: 8
+    # Ultra-fast optimization settings - Optimized for 100% accuracy and SSL stability
+    max_concurrent_requests: 30
+    connection_pool_size: 60
+    batch_size: 200
+    ultra_fast_timeout: 12
     # Adaptive rate limiting settings
     adaptive_rate_limiting: true
-    min_concurrent_requests: 10
-    success_rate_threshold: 0.95
-    rate_adjustment_factor: 0.8
-    rate_increase_factor: 1.1
+    min_concurrent_requests: 5
+    success_rate_threshold: 0.98
+    rate_adjustment_factor: 0.7
+    rate_increase_factor: 1.05
     # Progressive concurrency ramping
     progressive_ramping: true
-    ramp_start_concurrency: 5
-    ramp_target_concurrency: 50
-    ramp_batch_size: 20
+    ramp_start_concurrency: 3
+    ramp_target_concurrency: 30
+    ramp_batch_size: 15
 
 firecrawl:
   api_key: ${FIRECRAWL_API_KEY}  # Set this environment variable
