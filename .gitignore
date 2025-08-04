@@ -6,6 +6,11 @@
 output/
 *.json
 
+# Cache directories
+cache/
+temp_files/
+*.cache
+
 # Python
 __pycache__/
 *.py[cod]
