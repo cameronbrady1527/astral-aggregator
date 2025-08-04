@@ -9,4 +9,5 @@ sqlalchemy>=2.0.42
 passlib[bcrypt]>=1.7.4
 python-jose[cryptography]>=3.5.0
 python-multipart>=0.0.20
-beautifulsoup4>=4.13.4 
+beautifulsoup4>=4.13.4
+schedule>=1.2.0 

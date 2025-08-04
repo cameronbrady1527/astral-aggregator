@@ -32,6 +32,10 @@ class SitemapDetector(BaseDetector):
     def __init__(self, site_config: Any):
         super().__init__(site_config)
         self.sitemap_url = site_config.sitemap_url or self._guess_sitemap_url()
+        # Configuration for URL verification
+        self.verify_deleted_urls = getattr(site_config, 'verify_deleted_urls', True)
+        self.max_concurrent_checks = getattr(site_config, 'max_concurrent_checks', 5)
+        self.verification_timeout = getattr(site_config, 'verification_timeout', 10)
     
     def _guess_sitemap_url(self) -> str:
         """Guess the sitemap URL if not provided."""
@@ -86,14 +90,23 @@ class SitemapDetector(BaseDetector):
                 result.add_change("new", url, title=f"New page: {url}")
             
             deleted_urls = previous_urls - current_urls_set
-            for url in deleted_urls:
+            
+            # Verify that "deleted" URLs are actually deleted by checking if they still exist
+            if self.verify_deleted_urls and deleted_urls:
+                verified_deleted_urls = await self._verify_deleted_urls(deleted_urls)
+            else:
+                verified_deleted_urls = deleted_urls
+            
+            for url in verified_deleted_urls:
                 result.add_change("deleted", url, title=f"Removed page: {url}")
             
+            # Add metadata about verification
             result.metadata.update({
                 "current_urls": len(current_urls),
                 "previous_urls": len(previous_urls),
                 "new_urls": len(new_urls),
-                "deleted_urls": len(deleted_urls),
+                "deleted_urls": len(verified_deleted_urls),
+                "unverified_deleted_urls": len(deleted_urls) - len(verified_deleted_urls),
                 "sitemap_url": self.sitemap_url,
                 "sitemap_info": sitemap_info
             })
@@ -103,6 +116,40 @@ class SitemapDetector(BaseDetector):
             result.metadata["sitemap_url"] = self.sitemap_url
         
         return result
+    
+    async def _verify_deleted_urls(self, deleted_urls: set) -> set:
+        """Verify that URLs marked as deleted are actually deleted by checking their HTTP status."""
+        import aiohttp
+        
+        verified_deleted = set()
+        
+        # Limit concurrent requests to avoid overwhelming the server
+        semaphore = asyncio.Semaphore(self.max_concurrent_checks)
+        
+        async def check_url(url: str) -> tuple[str, bool]:
+            async with semaphore:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.head(url, timeout=self.verification_timeout, allow_redirects=False) as response:
+                            # Consider 404, 410, and 5xx errors as "deleted"
+                            # 200, 301, 302, etc. mean the page still exists
+                            is_deleted = response.status in [404, 410] or response.status >= 500
+                            return url, is_deleted
+                except Exception:
+                    # If we can't check the URL, assume it might still exist
+                    return url, False
+        
+        # Check all URLs concurrently
+        tasks = [check_url(url) for url in deleted_urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, tuple):
+                url, is_deleted = result
+                if is_deleted:
+                    verified_deleted.add(url)
+        
+        return verified_deleted
     
     async def _fetch_all_sitemap_urls(self) -> tuple[List[str], Dict[str, Any]]:
         """Fetch and parse all sitemaps (including sitemap indexes) to extract URLs."""

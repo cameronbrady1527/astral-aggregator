@@ -13,6 +13,10 @@ sites:
     detection_methods: ['hybrid']  # Use hybrid detection for comprehensive monitoring
     check_interval_minutes: 1440
     is_active: true
+    # Sitemap verification settings (prevents false positive "deleted" pages)
+    verify_deleted_urls: true  # Verify that "deleted" URLs are actually deleted
+    max_concurrent_checks: 5   # Max concurrent HTTP requests for verification
+    verification_timeout: 10   # Timeout in seconds for each verification request
     # Content detection settings
     enable_content_detection: true
     content_check_interval: 24  # Check content every 24 hours
@@ -28,6 +32,10 @@ sites:
     detection_methods: ['hybrid']
     check_interval_minutes: 1440
     is_active: true
+    # Sitemap verification settings
+    verify_deleted_urls: true
+    max_concurrent_checks: 5
+    verification_timeout: 10
 
 firecrawl:
   api_key: ${FIRECRAWL_API_KEY}  # Set this environment variable
