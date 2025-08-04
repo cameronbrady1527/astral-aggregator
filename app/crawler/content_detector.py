@@ -94,9 +94,14 @@ class ContentDetector(BaseDetector):
             
             # Find changed content
             changed_urls = []
-            for url, current_hash in current_hashes.items():
-                baseline_hash = baseline_hashes.get(url)
-                if baseline_hash and baseline_hash != current_hash:
+            for url, current_hash_data in current_hashes.items():
+                baseline_hash_data = baseline_hashes.get(url)
+                
+                # Handle both old string format and new dict format
+                current_hash = current_hash_data.get("hash") if isinstance(current_hash_data, dict) else current_hash_data
+                baseline_hash = baseline_hash_data.get("hash") if isinstance(baseline_hash_data, dict) else baseline_hash_data
+                
+                if baseline_hash and current_hash and baseline_hash != current_hash:
                     changed_urls.append(url)
                     result.add_change(
                         "content_changed", 
@@ -139,9 +144,11 @@ class ContentDetector(BaseDetector):
             # Fallback to main page
             return [self.site_url]
     
-    async def _fetch_content_hashes(self, urls: List[str]) -> Dict[str, str]:
+    async def _fetch_content_hashes(self, urls: List[str]) -> Dict[str, Dict[str, Any]]:
         """Fetch content hashes for the given URLs."""
         content_hashes = {}
+        successful_fetches = 0
+        failed_fetches = 0
         
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
             tasks = []
@@ -155,9 +162,23 @@ class ContentDetector(BaseDetector):
                 if isinstance(result, tuple) and len(result) == 2:
                     url, content_hash = result
                     if content_hash:
-                        content_hashes[url] = content_hash
+                        # Store as dictionary with hash and metadata
+                        content_hashes[url] = {
+                            "hash": content_hash,
+                            "fetched_at": datetime.now().isoformat(),
+                            "status": "success"
+                        }
+                        successful_fetches += 1
+                    else:
+                        failed_fetches += 1
                 else:
+                    failed_fetches += 1
                     print(f"Warning: Failed to fetch content for {urls[i]}: {result}")
+        
+        print(f"📊 Content hash fetching summary:")
+        print(f"   ✅ Successful: {successful_fetches}")
+        print(f"   ❌ Failed: {failed_fetches}")
+        print(f"   📈 Success rate: {(successful_fetches / len(urls) * 100):.1f}%")
         
         return content_hashes
     

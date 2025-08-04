@@ -287,7 +287,10 @@ class BaselineMerger:
             
             for url in modified_urls:
                 if url in previous_hashes and url in new_hashes:
-                    if previous_hashes[url].get("hash") == new_hashes[url].get("hash"):
+                    # Handle both old string format and new dict format
+                    prev_hash = previous_hashes[url].get("hash") if isinstance(previous_hashes[url], dict) else previous_hashes[url]
+                    new_hash = new_hashes[url].get("hash") if isinstance(new_hashes[url], dict) else new_hashes[url]
+                    if prev_hash == new_hash:
                         validation_result["warnings"].append(f"Modified URL has same hash: {url}")
             
             # Check that unchanged URLs have same hashes
@@ -295,7 +298,10 @@ class BaselineMerger:
             
             for url in unchanged_urls:
                 if url in previous_hashes and url in new_hashes:
-                    if previous_hashes[url].get("hash") != new_hashes[url].get("hash"):
+                    # Handle both old string format and new dict format
+                    prev_hash = previous_hashes[url].get("hash") if isinstance(previous_hashes[url], dict) else previous_hashes[url]
+                    new_hash = new_hashes[url].get("hash") if isinstance(new_hashes[url], dict) else new_hashes[url]
+                    if prev_hash != new_hash:
                         validation_result["errors"].append(f"Unchanged URL has different hash: {url}")
                         validation_result["is_valid"] = False
             

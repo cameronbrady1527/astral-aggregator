@@ -114,6 +114,44 @@ class ChangeDetector:
         # If no baseline exists, create initial baseline
         if current_baseline is None:
             print(f"📋 No baseline found for {site_config.name}, creating initial baseline...")
+            
+            # For initial baseline, we need to fetch content hashes if this is a sitemap-only detection
+            if method == "sitemap" and "content_hashes" not in current_state:
+                print(f"🔍 Fetching content hashes for initial baseline...")
+                try:
+                    # Create a content detector to fetch hashes for all URLs
+                    from .content_detector import ContentDetector
+                    content_detector = ContentDetector(site_config)
+                    
+                    # Get content hashes for all URLs in the sitemap
+                    urls = current_state.get("urls", [])
+                    if urls:
+                        content_hashes = await content_detector._fetch_content_hashes(urls)
+                        current_state["content_hashes"] = content_hashes
+                        print(f"✅ Fetched content hashes for {len(content_hashes)} URLs")
+                    else:
+                        current_state["content_hashes"] = {}
+                        print("⚠️ No URLs found in sitemap for content hash fetching")
+                except Exception as e:
+                    print(f"⚠️ Error fetching content hashes: {e}")
+                    current_state["content_hashes"] = {}
+            
+            # For hybrid method, extract content hashes from content_state and flatten sitemap_state
+            elif method == "hybrid" and "content_state" in current_state:
+                content_state = current_state.get("content_state")
+                if content_state and "content_hashes" in content_state:
+                    current_state["content_hashes"] = content_state["content_hashes"]
+                    print(f"✅ Extracted content hashes from hybrid detection: {len(content_state['content_hashes'])} URLs")
+                else:
+                    current_state["content_hashes"] = {}
+                    print("⚠️ No content hashes found in hybrid content_state")
+                
+                # Flatten sitemap_state for baseline creation
+                sitemap_state = current_state.get("sitemap_state", {})
+                if sitemap_state:
+                    current_state["sitemap_state"] = sitemap_state
+                    print(f"✅ Flattened sitemap state: {len(sitemap_state.get('urls', []))} URLs")
+            
             initial_baseline = self.baseline_manager.merger.create_initial_baseline(
                 site_config.name, site_config.name, current_state
             )
@@ -167,6 +205,14 @@ class ChangeDetector:
             validation_result = self.baseline_manager.merger.validate_merge_result(
                 current_baseline, new_baseline, change_result.changes
             )
+            
+            # Log validation results
+            self.baseline_manager._log_baseline_event("baseline_validation", site_config.name, {
+                "is_valid": validation_result["is_valid"],
+                "errors": validation_result.get("errors", []),
+                "warnings": validation_result.get("warnings", []),
+                "baseline_file": baseline_file
+            })
             
             if not validation_result["is_valid"]:
                 print(f"⚠️ Baseline merge validation failed: {validation_result['errors']}")

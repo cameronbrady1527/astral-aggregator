@@ -196,10 +196,10 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
         change_detector, baseline_manager = get_change_detector_with_baseline_manager()
         baseline_evolution_enabled = is_baseline_evolution_enabled()
         
-        # Update detection status
-        def update_detection_status(current_method: str = "", progress: int = 0, 
-                                  message: str = "", is_running: bool = True):
-            detection_status.update(
+        # Update detection status using the global function
+        def update_local_detection_status(current_method: str = "", progress: int = 0, 
+                                        message: str = "", is_running: bool = True):
+            update_detection_status(
                 current_method=current_method,
                 progress=progress,
                 message=message,
@@ -219,7 +219,7 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
                 
                 # Update status for each method
                 for i, method in enumerate(site_config.detection_methods):
-                    update_detection_status(
+                    update_local_detection_status(
                         current_method=method,
                         progress=int((i / len(site_config.detection_methods)) * 50),
                         message=f"Running {method} detection (baseline: {baseline_status})..."
@@ -241,7 +241,7 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
                 elif baseline_file:
                     final_message += f" - Initial baseline created: {baseline_file}"
                 
-                update_detection_status(
+                update_local_detection_status(
                     progress=100,
                     message=final_message,
                     is_running=False
@@ -249,7 +249,7 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
                 
                 return results
             except Exception as e:
-                update_detection_status(
+                update_local_detection_status(
                     progress=0,
                     message=f"Detection failed: {str(e)}",
                     is_running=False
@@ -276,14 +276,14 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
             "note": "Use GET /api/listeners/progress to monitor progress and baseline updates"
         }
     except ValueError as e:
-        update_detection_status(
+        update_local_detection_status(
             progress=0,
             message=f"Detection failed: {str(e)}",
             is_running=False
         )
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        update_detection_status(
+        update_local_detection_status(
             progress=0,
             message=f"Detection failed: {str(e)}",
             is_running=False
@@ -1288,3 +1288,25 @@ async def get_historical_data(
             "message": f"Historical data error: {str(e)}",
             "history": {}
         } 
+
+@router.get("/baseline-events")
+async def get_baseline_events(site_id: str = None, limit: int = 20) -> Dict[str, Any]:
+    """Get recent baseline events for dashboard display."""
+    try:
+        from ..dependencies import get_baseline_manager
+        
+        # Get the shared baseline manager instance
+        baseline_manager = get_baseline_manager()
+        
+        # Get baseline events from the baseline manager
+        events = baseline_manager.get_baseline_events(site_id, limit)
+        
+        return {
+            "status": "success",
+            "baseline_events": events,
+            "total_events": len(events),
+            "site_id": site_id,
+            "limit": limit
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting baseline events: {str(e)}") 

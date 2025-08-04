@@ -486,6 +486,36 @@ async def dashboard():
                 z-index: 1000;
                 display: none;
             }
+            
+            .baseline-event {
+                background: rgba(51, 65, 85, 0.6);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                border-radius: 12px;
+                padding: 15px;
+                margin-bottom: 10px;
+                transition: all 0.3s ease;
+            }
+            
+            .baseline-event:hover {
+                background: rgba(51, 65, 85, 0.8);
+                transform: translateX(5px);
+            }
+            
+            .baseline-event.created {
+                border-left: 4px solid #10b981;
+            }
+            
+            .baseline-event.updated {
+                border-left: 4px solid #f59e0b;
+            }
+            
+            .baseline-event.error {
+                border-left: 4px solid #ef4444;
+            }
+            
+            .baseline-event.validation {
+                border-left: 4px solid #60a5fa;
+            }
         </style>
     </head>
     <body>
@@ -511,6 +541,10 @@ async def dashboard():
                 <div class="status-item">
                     <span class="status-number" id="totalChanges">-</span>
                     <span class="status-label">Changes Detected</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-number" id="totalBaselines">-</span>
+                    <span class="status-label">Active Baselines</span>
                 </div>
                 <div class="status-item">
                     <span class="status-number" id="lastUpdate">-</span>
@@ -590,6 +624,17 @@ async def dashboard():
                     </div>
                 </div>
                 
+                <!-- Baseline Events -->
+                <div class="card">
+                    <h3><span class="card-icon">🎯</span> Baseline Events</h3>
+                    <div id="baselineEventsContent">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            Loading baseline events...
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Detailed Analytics -->
                 <div class="card">
                     <h3><span class="card-icon">🔍</span> Detailed Analytics</h3>
@@ -637,6 +682,7 @@ async def dashboard():
                         loadRecentChanges(),
                         loadSiteManagement(),
                         loadDetailedAnalytics(),
+                        loadBaselineEvents(),
                         loadHistoricalData(),
                         loadDetectionProgress()
                     ]);
@@ -698,15 +744,28 @@ async def dashboard():
             
             async function loadStatusBar() {
                 try {
-                    const response = await fetch('/api/listeners/analytics');
-                    const data = await response.json();
+                    const [analyticsResponse, baselineResponse] = await Promise.all([
+                        fetch('/api/listeners/analytics'),
+                        fetch('/api/listeners/baseline-events?limit=1')
+                    ]);
                     
-                    if (data.status === 'healthy') {
-                        const overview = data.analytics.overview;
+                    const analyticsData = await analyticsResponse.json();
+                    const baselineData = await baselineResponse.json();
+                    
+                    if (analyticsData.status === 'healthy') {
+                        const overview = analyticsData.analytics.overview;
                         document.getElementById('totalSites').textContent = overview.total_sites;
                         document.getElementById('totalUrls').textContent = overview.total_urls_monitored.toLocaleString();
                         document.getElementById('totalChanges').textContent = overview.total_changes_detected.toLocaleString();
                         document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+                        
+                        // Count unique sites with baselines
+                        if (baselineData.status === 'success' && baselineData.baseline_events) {
+                            const uniqueSites = new Set(baselineData.baseline_events.map(event => event.site_id));
+                            document.getElementById('totalBaselines').textContent = uniqueSites.size;
+                        } else {
+                            document.getElementById('totalBaselines').textContent = '0';
+                        }
                     }
                 } catch (error) {
                     console.error('Error loading status bar:', error);
@@ -970,6 +1029,84 @@ async def dashboard():
                 } catch (error) {
                     console.error('Error loading detailed analytics:', error);
                     document.getElementById('detailedAnalyticsContent').innerHTML = '<div class="error">Error loading detailed analytics</div>';
+                }
+            }
+            
+            async function loadBaselineEvents() {
+                try {
+                    const response = await fetch('/api/listeners/baseline-events?limit=10');
+                    const data = await response.json();
+                    
+                    const content = document.getElementById('baselineEventsContent');
+                    
+                    if (data.status === 'success' && data.baseline_events && data.baseline_events.length > 0) {
+                        let html = '<div class="recent-changes">';
+                        
+                        data.baseline_events.forEach(event => {
+                            const time = new Date(event.timestamp).toLocaleString();
+                            const details = event.details;
+                            
+                            let eventIcon = '🎯';
+                            let eventColor = '#60a5fa';
+                            let eventTitle = 'Baseline Event';
+                            
+                            if (event.event_type === 'baseline_created') {
+                                eventIcon = '🎯';
+                                eventColor = '#10b981';
+                                eventTitle = 'New Baseline Created';
+                            } else if (event.event_type === 'baseline_updated') {
+                                eventIcon = '🔄';
+                                eventColor = '#f59e0b';
+                                eventTitle = 'Baseline Updated';
+                            } else if (event.event_type === 'baseline_error') {
+                                eventIcon = '❌';
+                                eventColor = '#ef4444';
+                                eventTitle = 'Baseline Error';
+                            } else if (event.event_type === 'baseline_validation') {
+                                eventIcon = details.is_valid ? '✅' : '⚠️';
+                                eventColor = details.is_valid ? '#10b981' : '#f59e0b';
+                                eventTitle = details.is_valid ? 'Baseline Validated' : 'Baseline Validation Failed';
+                            }
+                            
+                            let eventDetails = '';
+                            if (event.event_type === 'baseline_created') {
+                                eventDetails = `${details.total_urls} URLs, ${details.total_content_hashes} content hashes`;
+                            } else if (event.event_type === 'baseline_updated') {
+                                eventDetails = `${details.changes_applied} changes applied (${details.new_urls} new, ${details.modified_urls} modified, ${details.deleted_urls} deleted)`;
+                            } else if (event.event_type === 'baseline_error') {
+                                eventDetails = details.error;
+                            } else if (event.event_type === 'baseline_validation') {
+                                if (details.errors && details.errors.length > 0) {
+                                    eventDetails = `${details.errors.length} validation errors`;
+                                } else if (details.warnings && details.warnings.length > 0) {
+                                    eventDetails = `${details.warnings.length} validation warnings`;
+                                } else {
+                                    eventDetails = 'Validation passed';
+                                }
+                            }
+                            
+                            html += `
+                                <div class="change-item" style="border-left-color: ${eventColor};">
+                                    <div class="change-header">
+                                        <div class="change-site">
+                                            <span style="margin-right: 8px;">${eventIcon}</span>
+                                            ${eventTitle} - ${event.site_id}
+                                        </div>
+                                        <div class="change-time">${time}</div>
+                                    </div>
+                                    <div class="change-summary">${eventDetails}</div>
+                                </div>
+                            `;
+                        });
+                        
+                        html += '</div>';
+                        content.innerHTML = html;
+                    } else {
+                        content.innerHTML = '<div class="loading">No baseline events found</div>';
+                    }
+                } catch (error) {
+                    console.error('Error loading baseline events:', error);
+                    document.getElementById('baselineEventsContent').innerHTML = '<div class="error">Error loading baseline events</div>';
                 }
             }
             

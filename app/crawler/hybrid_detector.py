@@ -85,13 +85,13 @@ class HybridDetector(BaseDetector):
             
             if previous_baseline is None:
                 result.metadata["message"] = "First run - establishing hybrid baseline"
-                result.metadata["total_urls"] = len(current_state.get("urls", []))
-                result.metadata["total_content_hashes"] = len(current_state.get("content_hashes", {}))
+                result.metadata["total_urls"] = len(current_state.get("sitemap_state", {}).get("urls", []))
+                result.metadata["total_content_hashes"] = len(current_state.get("content_state", {}).get("content_hashes", {}) if current_state.get("content_state") else {})
                 return result
             
             # Compare sitemap URLs
             baseline_urls = set(previous_baseline.get("sitemap_state", {}).get("urls", []))
-            current_urls = set(current_state.get("urls", []))
+            current_urls = set(current_state.get("sitemap_state", {}).get("urls", []))
             
             new_urls = current_urls - baseline_urls
             deleted_urls = baseline_urls - current_urls
@@ -106,12 +106,16 @@ class HybridDetector(BaseDetector):
             
             # Compare content hashes for common URLs
             baseline_hashes = previous_baseline.get("content_hashes", {})
-            current_hashes = current_state.get("content_hashes", {})
+            current_hashes = current_state.get("content_state", {}).get("content_hashes", {})
             
             content_changes = 0
             for url in common_urls:
-                baseline_hash = baseline_hashes.get(url, {}).get("hash")
-                current_hash = current_hashes.get(url, {}).get("hash")
+                # Handle both old string format and new dict format
+                baseline_hash_data = baseline_hashes.get(url, {})
+                current_hash_data = current_hashes.get(url, {})
+                
+                baseline_hash = baseline_hash_data.get("hash") if isinstance(baseline_hash_data, dict) else baseline_hash_data
+                current_hash = current_hash_data.get("hash") if isinstance(current_hash_data, dict) else current_hash_data
                 
                 if baseline_hash and current_hash and baseline_hash != current_hash:
                     result.add_change(

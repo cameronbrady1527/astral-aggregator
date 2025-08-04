@@ -11,9 +11,10 @@
 
 # Standard Library -----
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
 # Internal -----
 from .baseline_merger import BaselineMerger
@@ -22,6 +23,27 @@ from .baseline_merger import BaselineMerger
 # Public exports
 # ==============================================================================
 __all__ = ['BaselineManager']
+
+# ==============================================================================
+# Logging Configuration
+# ==============================================================================
+
+# Configure logging for baseline operations
+baseline_logger = logging.getLogger('baseline_manager')
+baseline_logger.setLevel(logging.INFO)
+
+# Create console handler if it doesn't exist
+if not baseline_logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+    baseline_logger.addHandler(console_handler)
 
 
 class BaselineManager:
@@ -32,6 +54,97 @@ class BaselineManager:
         self.baseline_dir = Path(baseline_dir)
         self.baseline_dir.mkdir(exist_ok=True)
         self.merger = BaselineMerger()
+        
+        # Track baseline creation events for dashboard (persistent storage)
+        self.events_file = self.baseline_dir / "baseline_events.json"
+        self.baseline_events = self._load_events()
+    
+    def _load_events(self) -> List[Dict[str, Any]]:
+        """Load baseline events from persistent storage."""
+        try:
+            if self.events_file.exists():
+                with open(self.events_file, 'r', encoding='utf-8') as f:
+                    events = json.load(f)
+                    # Ensure we have a list
+                    if isinstance(events, list):
+                        return events
+            return []
+        except Exception as e:
+            print(f"Error loading baseline events: {e}")
+            return []
+    
+    def _save_events(self):
+        """Save baseline events to persistent storage."""
+        try:
+            with open(self.events_file, 'w', encoding='utf-8') as f:
+                json.dump(self.baseline_events, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"Error saving baseline events: {e}")
+    
+    def _log_baseline_event(self, event_type: str, site_id: str, details: Dict[str, Any]):
+        """Log baseline events for both terminal and dashboard tracking."""
+        event = {
+            "timestamp": datetime.now().isoformat(),
+            "event_type": event_type,
+            "site_id": site_id,
+            "details": details
+        }
+        
+        # Add to events list for dashboard
+        self.baseline_events.append(event)
+        
+        # Keep only last 100 events
+        if len(self.baseline_events) > 100:
+            self.baseline_events = self.baseline_events[-100:]
+        
+        # Save events persistently
+        self._save_events()
+        
+        # Log to terminal with emoji and formatting
+        if event_type == "baseline_created":
+            baseline_logger.info(f"🎯 NEW BASELINE CREATED for {site_id}")
+            baseline_logger.info(f"   📁 File: {details.get('file_path', 'N/A')}")
+            baseline_logger.info(f"   📊 URLs: {details.get('total_urls', 0)}")
+            baseline_logger.info(f"   🔗 Content Hashes: {details.get('total_content_hashes', 0)}")
+            baseline_logger.info(f"   📅 Date: {details.get('baseline_date', 'N/A')}")
+            
+        elif event_type == "baseline_updated":
+            baseline_logger.info(f"🔄 BASELINE UPDATED for {site_id}")
+            baseline_logger.info(f"   📁 File: {details.get('file_path', 'N/A')}")
+            baseline_logger.info(f"   📈 Changes Applied: {details.get('changes_applied', 0)}")
+            baseline_logger.info(f"   ➕ New URLs: {details.get('new_urls', 0)}")
+            baseline_logger.info(f"   ✏️ Modified URLs: {details.get('modified_urls', 0)}")
+            baseline_logger.info(f"   🗑️ Deleted URLs: {details.get('deleted_urls', 0)}")
+            baseline_logger.info(f"   📅 Previous Date: {details.get('previous_baseline_date', 'N/A')}")
+            baseline_logger.info(f"   📅 New Date: {details.get('baseline_date', 'N/A')}")
+            
+        elif event_type == "baseline_error":
+            baseline_logger.error(f"❌ BASELINE ERROR for {site_id}")
+            baseline_logger.error(f"   🚨 Error: {details.get('error', 'Unknown error')}")
+            
+        elif event_type == "baseline_validation":
+            if details.get('is_valid', False):
+                baseline_logger.info(f"✅ BASELINE VALIDATION PASSED for {site_id}")
+            else:
+                baseline_logger.warning(f"⚠️ BASELINE VALIDATION FAILED for {site_id}")
+                for error in details.get('errors', []):
+                    baseline_logger.warning(f"   ❌ {error}")
+                for warning in details.get('warnings', []):
+                    baseline_logger.warning(f"   ⚠️ {warning}")
+    
+    def get_baseline_events(self, site_id: str = None, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get recent baseline events for dashboard display."""
+        # Reload events from file to ensure we have the latest
+        self.baseline_events = self._load_events()
+        
+        events = self.baseline_events
+        
+        if site_id:
+            events = [event for event in events if event["site_id"] == site_id]
+        
+
+        
+        return events[-limit:] if limit else events
     
     def get_latest_baseline(self, site_id: str) -> Optional[Dict[str, Any]]:
         """Get the most recent baseline for a site."""
@@ -40,13 +153,25 @@ class BaselineManager:
             if not baseline_files:
                 return None
             
-            # Sort by modification time and get the most recent
-            latest_file = max(baseline_files, key=lambda x: x.stat().st_mtime)
+            # Sort by baseline date (not file modification time) and get the most recent
+            latest_baseline = None
+            latest_date = None
             
-            with open(latest_file, 'r', encoding='utf-8') as f:
-                baseline_data = json.load(f)
+            for baseline_file in baseline_files:
+                try:
+                    with open(baseline_file, 'r', encoding='utf-8') as f:
+                        baseline_data = json.load(f)
+                    
+                    baseline_date = baseline_data.get("baseline_date")
+                    if baseline_date and (latest_date is None or baseline_date > latest_date):
+                        latest_date = baseline_date
+                        latest_baseline = baseline_data
+                        
+                except Exception as e:
+                    print(f"Error reading baseline file {baseline_file}: {e}")
+                    continue
             
-            return baseline_data
+            return latest_baseline
             
         except Exception as e:
             print(f"Error reading latest baseline for {site_id}: {e}")
@@ -55,11 +180,17 @@ class BaselineManager:
     def get_baseline_by_date(self, site_id: str, date: str) -> Optional[Dict[str, Any]]:
         """Get a specific baseline by date (format: YYYYMMDD)."""
         try:
-            baseline_file = self.baseline_dir / f"{site_id}_{date}_baseline.json"
-            if not baseline_file.exists():
+            # Look for files matching the pattern site_id_YYYYMMDD_*_baseline.json
+            pattern = f"{site_id}_{date}_*_baseline.json"
+            matching_files = list(self.baseline_dir.glob(pattern))
+            
+            if not matching_files:
                 return None
             
-            with open(baseline_file, 'r', encoding='utf-8') as f:
+            # Get the most recent file if multiple exist
+            latest_file = max(matching_files, key=lambda x: x.stat().st_mtime)
+            
+            with open(latest_file, 'r', encoding='utf-8') as f:
                 baseline_data = json.load(f)
             
             return baseline_data
@@ -95,10 +226,6 @@ class BaselineManager:
     def save_baseline(self, site_id: str, baseline_data: Dict[str, Any]) -> str:
         """Save new baseline with timestamp."""
         try:
-            # Generate timestamp for the new baseline
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            baseline_file = self.baseline_dir / f"{site_id}_{timestamp}_baseline.json"
-            
             # Ensure the baseline has required metadata
             if "baseline_date" not in baseline_data:
                 baseline_data["baseline_date"] = datetime.now().strftime("%Y%m%d")
@@ -106,18 +233,61 @@ class BaselineManager:
             if "created_at" not in baseline_data:
                 baseline_data["created_at"] = datetime.now().isoformat()
             
+            # Use the baseline_date for the filename to maintain consistency
+            baseline_date = baseline_data["baseline_date"]
+            
+            # Generate timestamp for uniqueness (microseconds + process ID + thread ID for better uniqueness)
+            import os
+            import threading
+            timestamp = f"{datetime.now().strftime('%H%M%S_%f')}_{os.getpid()}_{threading.get_ident()}"  # HHMMSS_MMMMMM_PID_THREADID
+            
+            baseline_file = self.baseline_dir / f"{site_id}_{baseline_date}_{timestamp}_baseline.json"
+            
             # Save the baseline
             with open(baseline_file, 'w', encoding='utf-8') as f:
                 json.dump(baseline_data, f, indent=2, ensure_ascii=False)
             
-            print(f"✅ Baseline saved: {baseline_file}")
-            return str(baseline_file)
+            # Verify the file was written successfully
+            if baseline_file.exists() and baseline_file.stat().st_size > 0:
+                # Determine if this is a new baseline or an update
+                evolution_type = baseline_data.get("evolution_type", "unknown")
+                
+                if evolution_type == "initial_creation":
+                    # Log baseline creation
+                    self._log_baseline_event("baseline_created", site_id, {
+                        "file_path": str(baseline_file),
+                        "total_urls": baseline_data.get("total_urls", 0),
+                        "total_content_hashes": baseline_data.get("total_content_hashes", 0),
+                        "baseline_date": baseline_data.get("baseline_date"),
+                        "evolution_type": evolution_type
+                    })
+                else:
+                    # Log baseline update
+                    change_summary = baseline_data.get("change_summary", {})
+                    self._log_baseline_event("baseline_updated", site_id, {
+                        "file_path": str(baseline_file),
+                        "changes_applied": baseline_data.get("changes_applied", 0),
+                        "new_urls": change_summary.get("new_urls", 0),
+                        "modified_urls": change_summary.get("modified_urls", 0),
+                        "deleted_urls": change_summary.get("deleted_urls", 0),
+                        "previous_baseline_date": baseline_data.get("previous_baseline_date"),
+                        "baseline_date": baseline_data.get("baseline_date"),
+                        "evolution_type": evolution_type
+                    })
+                
+                return str(baseline_file)
+            else:
+                raise Exception(f"Failed to write baseline file or file is empty: {baseline_file}")
             
         except Exception as e:
-            print(f"Error saving baseline for {site_id}: {e}")
+            # Log error
+            self._log_baseline_event("baseline_error", site_id, {
+                "error": str(e),
+                "operation": "save_baseline"
+            })
             raise
     
-    def list_baselines(self, site_id: str = None) -> Dict[str, List[str]]:
+    def list_baselines(self, site_id: str = None) -> Union[Dict[str, List[str]], List[str]]:
         """List all available baselines."""
         baselines = {}
         
@@ -125,44 +295,45 @@ class BaselineManager:
             for baseline_file in self.baseline_dir.glob("*_baseline.json"):
                 filename = baseline_file.name
                 
-                # Handle both old format (site_date_baseline.json) and new format (site_timestamp_baseline.json)
+                # Parse filename: site_id_YYYYMMDD_HHMMSS_MMMMMM_PID_THREADID_baseline.json
                 if filename.endswith("_baseline.json"):
                     base_name = filename.replace("_baseline.json", "")
+                    parts = base_name.split("_")
                     
-                    # Find the last underscore that separates site_id from timestamp
-                    # Format: site_id_YYYYMMDD_HHMMSS_baseline.json
-                    last_underscore = base_name.rfind("_")
-                    if last_underscore != -1:
-                        # Check if the part after last underscore is a timestamp (HHMMSS)
-                        timestamp_part = base_name[last_underscore + 1:]
-                        if len(timestamp_part) == 6 and timestamp_part.isdigit():
-                            # New format: site_id_YYYYMMDD_HHMMSS
-                            site_part = base_name[:last_underscore]
-                            date_part = site_part[site_part.rfind("_") + 1:] if "_" in site_part else site_part
-                            file_site_id = site_part[:site_part.rfind("_")] if "_" in site_part else site_part
-                        else:
-                            # Old format: site_id_YYYYMMDD
-                            file_site_id = base_name[:last_underscore]
-                            date_part = base_name[last_underscore + 1:]
-                    else:
-                        continue
+                    # Find the date part (8 digits: YYYYMMDD) and everything before it is the site_id
+                    date_part = None
+                    file_site_id = None
                     
-                    if site_id is None or file_site_id == site_id:
-                        if file_site_id not in baselines:
-                            baselines[file_site_id] = []
-                        # Only add unique dates
-                        if date_part not in baselines[file_site_id]:
-                            baselines[file_site_id].append(date_part)
+                    for i, part in enumerate(parts):
+                        if len(part) == 8 and part.isdigit():
+                            date_part = part
+                            # Everything before this part is the site_id
+                            file_site_id = "_".join(parts[:i])
+                            break
+                    
+                    if date_part and file_site_id:
+                        if site_id is None or file_site_id == site_id:
+                            if file_site_id not in baselines:
+                                baselines[file_site_id] = []
+                            # Only add unique dates
+                            if date_part not in baselines[file_site_id]:
+                                baselines[file_site_id].append(date_part)
             
             # Sort dates for each site
             for site in baselines:
                 baselines[site].sort()
             
-            return baselines
+            # Return format based on whether site_id was provided
+            if site_id is not None:
+                # Return list of dates for specific site
+                return baselines.get(site_id, [])
+            else:
+                # Return dictionary of all sites
+                return baselines
             
         except Exception as e:
             print(f"Error listing baselines: {e}")
-            return {}
+            return [] if site_id is not None else {}
     
     def get_baseline_info(self, site_id: str, date: str) -> Dict[str, Any]:
         """Get information about a specific baseline."""
@@ -171,70 +342,133 @@ class BaselineManager:
             if not baseline_data:
                 return {"error": f"Baseline not found: {site_id}_{date}"}
             
-            baseline_file = self.baseline_dir / f"{site_id}_{date}_baseline.json"
-            file_size = baseline_file.stat().st_size
-            file_size_mb = file_size / (1024 * 1024)
+            # Find the actual file path
+            pattern = f"{site_id}_{date}_*_baseline.json"
+            matching_files = list(self.baseline_dir.glob(pattern))
+            if matching_files:
+                baseline_file = max(matching_files, key=lambda x: x.stat().st_mtime)
+                file_size = baseline_file.stat().st_size
+                file_size_mb = file_size / (1024 * 1024)
+            else:
+                return {"error": f"Baseline file not found: {site_id}_{date}"}
             
             return {
-                "site_id": site_id,
+                "site_id": baseline_data.get("site_id", site_id),
                 "date": date,
                 "file_path": str(baseline_file),
-                "file_size_mb": round(file_size_mb, 2),
+                "file_size_mb": round(file_size_mb, 4),  # More precision for small files
                 "baseline_info": baseline_data
             }
             
         except Exception as e:
             return {"error": f"Error reading baseline: {e}"}
     
-    def cleanup_old_baselines(self, site_id: str = None, days_to_keep: int = 30) -> Dict[str, Any]:
-        """Clean up baselines older than specified days."""
-        from datetime import timedelta
-        
-        cutoff_date = datetime.now() - timedelta(days=days_to_keep)
-        cutoff_date_str = cutoff_date.strftime("%Y%m%d")
-        
+    def cleanup_old_baselines(self, site_id: str = None, max_baselines_per_site: int = 5) -> Dict[str, Any]:
+        """Clean up old baselines, keeping only the most recent ones per site."""
         deleted_files = []
         total_size_freed = 0
         
         try:
-            pattern = f"{site_id}_*_baseline.json" if site_id else "*_baseline.json"
-            
-            for baseline_file in self.baseline_dir.glob(pattern):
-                filename = baseline_file.name
-                parts = filename.replace("_baseline.json", "").split("_")
+            if site_id:
+                # Clean up for specific site
+                return self._cleanup_site_baselines(site_id, max_baselines_per_site)
+            else:
+                # Clean up for all sites
+                site_ids = set()
+                for baseline_file in self.baseline_dir.glob("*_baseline.json"):
+                    filename = baseline_file.name
+                    if filename.endswith("_baseline.json"):
+                        base_name = filename.replace("_baseline.json", "")
+                        parts = base_name.split("_")
+                        if len(parts) >= 2:
+                            site_ids.add(parts[0])
                 
-                if len(parts) >= 2:
-                    date_str = parts[1]
-                    
-                    try:
-                        file_date = datetime.strptime(date_str, "%Y%m%d")
-                        if file_date < cutoff_date:
-                            file_size = baseline_file.stat().st_size
-                            baseline_file.unlink()
-                            deleted_files.append(filename)
-                            total_size_freed += file_size
-                    except ValueError:
-                        # Skip files with invalid date format
-                        continue
-            
-            return {
-                "deleted_files": deleted_files,
-                "total_files_deleted": len(deleted_files),
-                "total_size_freed_mb": round(total_size_freed / (1024 * 1024), 2),
-                "cutoff_date": cutoff_date_str
-            }
-            
+                total_deleted = 0
+                total_size_freed = 0
+                all_deleted_files = []
+                
+                for site in site_ids:
+                    result = self._cleanup_site_baselines(site, max_baselines_per_site)
+                    if "error" not in result:
+                        total_deleted += result["total_files_deleted"]
+                        total_size_freed += result["total_size_freed_mb"]
+                        all_deleted_files.extend(result["deleted_files"])
+                
+                return {
+                    "total_files_deleted": total_deleted,
+                    "total_size_freed_mb": round(total_size_freed, 4),
+                    "deleted_files": all_deleted_files,
+                    "sites_processed": len(site_ids)
+                }
+                
         except Exception as e:
             return {"error": f"Error during cleanup: {e}"}
     
-    def validate_baseline(self, baseline_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate baseline data structure and integrity."""
-        validation_result = {
-            "is_valid": True,
-            "errors": [],
-            "warnings": []
-        }
+    def _cleanup_site_baselines(self, site_id: str, max_baselines: int) -> Dict[str, Any]:
+        """Clean up baselines for a specific site, keeping only the most recent ones."""
+        deleted_files = []
+        total_size_freed = 0
         
+        try:
+            # Get all baseline files for this site
+            pattern = f"{site_id}_*_baseline.json"
+            baseline_files = list(self.baseline_dir.glob(pattern))
+            
+            if len(baseline_files) <= max_baselines:
+                # No cleanup needed
+                return {
+                    "total_files_deleted": 0,
+                    "total_size_freed_mb": 0,
+                    "deleted_files": [],
+                    "site_id": site_id
+                }
+            
+            # Parse dates and sort files by date (oldest first)
+            file_date_pairs = []
+            for baseline_file in baseline_files:
+                filename = baseline_file.name
+                if filename.endswith("_baseline.json"):
+                    base_name = filename.replace("_baseline.json", "")
+                    parts = base_name.split("_")
+                    
+                    # Find the date part (8 digits: YYYYMMDD)
+                    date_str = None
+                    for i, part in enumerate(parts):
+                        if len(part) == 8 and part.isdigit():
+                            date_str = part
+                            break
+                    
+                    if date_str:
+                        file_date_pairs.append((baseline_file, date_str))
+            
+            # Sort by date (oldest first)
+            file_date_pairs.sort(key=lambda x: x[1])
+            
+            # Delete oldest files, keeping only the most recent max_baselines
+            files_to_delete = file_date_pairs[:-max_baselines]
+            
+            for baseline_file, date_str in files_to_delete:
+                try:
+                    file_size = baseline_file.stat().st_size
+                    baseline_file.unlink()
+                    deleted_files.append(baseline_file.name)
+                    total_size_freed += file_size
+                except Exception as e:
+                    print(f"Error deleting {baseline_file.name}: {e}")
+            
+            return {
+                "total_files_deleted": len(deleted_files),
+                "total_size_freed_mb": round(total_size_freed / (1024 * 1024), 4),
+                "deleted_files": deleted_files,
+                "site_id": site_id,
+                "kept_baselines": len(file_date_pairs) - len(deleted_files)
+            }
+            
+        except Exception as e:
+            return {"error": f"Error cleaning up site {site_id}: {e}"}
+    
+    def validate_baseline(self, baseline_data: Dict[str, Any]) -> bool:
+        """Validate baseline data structure and integrity."""
         try:
             # Check required fields
             required_fields = [
@@ -244,8 +478,7 @@ class BaselineManager:
             
             for field in required_fields:
                 if field not in baseline_data:
-                    validation_result["is_valid"] = False
-                    validation_result["errors"].append(f"Missing required field: {field}")
+                    return False
             
             # Check data consistency
             if "sitemap_state" in baseline_data and "content_hashes" in baseline_data:
@@ -255,20 +488,60 @@ class BaselineManager:
                 # URLs in sitemap but not in content hashes
                 missing_content = sitemap_urls - content_urls
                 if missing_content:
-                    validation_result["warnings"].append(
-                        f"URLs in sitemap but missing content hashes: {len(missing_content)}"
-                    )
+                    # This is a warning, not an error
+                    pass
                 
                 # URLs in content hashes but not in sitemap
                 extra_content = content_urls - sitemap_urls
                 if extra_content:
-                    validation_result["warnings"].append(
-                        f"URLs in content hashes but not in sitemap: {len(extra_content)}"
-                    )
+                    # This is a warning, not an error
+                    pass
             
-            return validation_result
+            return True
             
         except Exception as e:
-            validation_result["is_valid"] = False
-            validation_result["errors"].append(f"Validation error: {e}")
-            return validation_result 
+            return False
+    
+    def get_storage_stats(self) -> Dict[str, Any]:
+        """Get storage statistics for all baselines."""
+        try:
+            total_files = 0
+            total_size = 0
+            site_stats = {}
+            
+            for baseline_file in self.baseline_dir.glob("*_baseline.json"):
+                if baseline_file.exists():
+                    file_size = baseline_file.stat().st_size
+                    
+                    if file_size > 0:
+                        total_files += 1
+                        total_size += file_size
+                        
+                        # Extract site_id from filename
+                        filename = baseline_file.name
+                        if filename.endswith("_baseline.json"):
+                            base_name = filename.replace("_baseline.json", "")
+                            parts = base_name.split("_")
+                            
+                            # Find the date part (8 digits: YYYYMMDD) and everything before it is the site_id
+                            site_id = None
+                            for i, part in enumerate(parts):
+                                if len(part) == 8 and part.isdigit():
+                                    # Everything before this part is the site_id
+                                    site_id = "_".join(parts[:i])
+                                    break
+                            
+                            if site_id:
+                                if site_id not in site_stats:
+                                    site_stats[site_id] = {"count": 0, "size": 0}
+                                site_stats[site_id]["count"] += 1
+                                site_stats[site_id]["size"] += file_size
+            
+            return {
+                "total_files": total_files,
+                "total_size_mb": round(total_size / (1024 * 1024), 4),  # More precision for small files
+                "site_stats": site_stats
+            }
+            
+        except Exception as e:
+            return {"error": f"Error getting storage stats: {e}"} 
