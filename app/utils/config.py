@@ -34,6 +34,10 @@ class SiteConfig:
         self.detection_methods = kwargs.get('detection_methods', ['sitemap'])
         self.check_interval_minutes = kwargs.get('check_interval_minutes', 1440)
         self.is_active = kwargs.get('is_active', True)
+        
+        # Store all additional configuration attributes
+        for key, value in kwargs.items():
+            setattr(self, key, value)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""

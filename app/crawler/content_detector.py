@@ -48,8 +48,11 @@ class ContentDetector(BaseDetector):
             # Get URLs from sitemap first
             sitemap_urls = await self._get_sitemap_urls()
             
-            # Limit to most important pages
-            key_urls = sitemap_urls[:self.max_pages]
+            # Limit to most important pages (0 = no limit, check all pages)
+            if self.max_pages > 0:
+                key_urls = sitemap_urls[:self.max_pages]
+            else:
+                key_urls = sitemap_urls  # Check all pages
             
             # Fetch and hash content
             content_hashes = await self._fetch_content_hashes(key_urls)

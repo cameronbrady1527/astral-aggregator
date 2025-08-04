@@ -1,0 +1,64 @@
+{
+  "changes": [
+    {
+      "url": "https://www.waverley.gov.uk/Search-Results",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Search-Results"
+    },
+    {
+      "url": "https://www.waverley.gov.uk/Activity-Feed/My-Profile",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Activity-Feed/My-Profile"
+    },
+    {
+      "url": "https://www.waverley.gov.uk/Activity-Feed/Messages",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Activity-Feed/Messages"
+    },
+    {
+      "url": "https://www.waverley.gov.uk/Services/Planning-and-building",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Services/Planning-and-building"
+    },
+    {
+      "url": "https://www.waverley.gov.uk/Services/Council-Tax",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Services/Council-Tax"
+    },
+    {
+      "url": "https://www.waverley.gov.uk/Activity-Feed/Friends",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Activity-Feed/Friends"
+    },
+    {
+      "url": "https://www.waverley.gov.uk/Services",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Services"
+    },
+    {
+      "url": "https://www.waverley.gov.uk/Information",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Information"
+    },
+    {
+      "url": "https://www.waverley.gov.uk/Services/Bins-and-recycling",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Services/Bins-and-recycling"
+    },
+    {
+      "url": "https://www.waverley.gov.uk/Council-updates",
+      "change_type": "new_content",
+      "detected_at": "2025-08-04T09:27:14.071812",
+      "title": "New page with content: https://www.waverley.gov.uk/Council-updates"
+    }
+  ]
+}
