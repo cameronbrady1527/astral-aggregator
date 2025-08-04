@@ -183,14 +183,18 @@ async def trigger_info() -> Dict[str, Any]:
 @router.post("/trigger/{site_id}")
 async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
     """
-    Trigger change detection for a specific site.
+    Trigger change detection for a specific site with baseline evolution.
     
     This endpoint starts the change detection process and returns immediately.
+    The system will automatically update baselines when changes are detected.
     Use the progress endpoint to monitor the detection status.
     """
     try:
-        # Initialize change detector
-        change_detector = ChangeDetector()
+        # Get change detector and baseline manager from dependencies
+        from ..dependencies import get_change_detector_with_baseline_manager, is_baseline_evolution_enabled
+        
+        change_detector, baseline_manager = get_change_detector_with_baseline_manager()
+        baseline_evolution_enabled = is_baseline_evolution_enabled()
         
         # Update detection status
         def update_detection_status(current_method: str = "", progress: int = 0, 
@@ -209,12 +213,16 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
             try:
                 site_config = change_detector.config_manager.get_site(site_id)
                 
+                # Check if baseline exists
+                current_baseline = baseline_manager.get_latest_baseline(site_id)
+                baseline_status = "existing" if current_baseline else "creating_initial"
+                
                 # Update status for each method
                 for i, method in enumerate(site_config.detection_methods):
                     update_detection_status(
                         current_method=method,
                         progress=int((i / len(site_config.detection_methods)) * 50),
-                        message=f"Running {method} detection..."
+                        message=f"Running {method} detection (baseline: {baseline_status})..."
                     )
                     
                     # Add a small delay to allow progress updates
@@ -223,10 +231,19 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
                 # Run the actual detection
                 results = await change_detector.detect_changes_for_site(site_id)
                 
-                # Update final status
+                # Update final status with baseline information
+                baseline_updated = results.get("baseline_updated", False)
+                baseline_file = results.get("baseline_file")
+                
+                final_message = "Detection completed successfully"
+                if baseline_updated:
+                    final_message += f" - Baseline updated: {baseline_file}"
+                elif baseline_file:
+                    final_message += f" - Initial baseline created: {baseline_file}"
+                
                 update_detection_status(
                     progress=100,
-                    message="Detection completed successfully",
+                    message=final_message,
                     is_running=False
                 )
                 
@@ -242,13 +259,21 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
         # Start detection in background
         asyncio.create_task(run_detection_with_progress())
         
+        # Get baseline information for response
+        current_baseline = baseline_manager.get_latest_baseline(site_id)
+        baseline_info = {
+            "baseline_evolution_enabled": baseline_evolution_enabled,
+            "current_baseline_date": current_baseline.get("baseline_date") if current_baseline else None,
+            "current_baseline_urls": len(current_baseline.get("sitemap_state", {}).get("urls", [])) if current_baseline else 0,
+            "baseline_updated": False,  # Will be updated when detection completes
+        }
+        
         return {
             "status": "started",
             "message": f"Change detection started for {site_id}",
-            "baseline_evolution_enabled": True,
-            "baseline_updated": False,  # Will be updated when detection completes
+            "baseline_info": baseline_info,
             "progress_url": "/api/listeners/progress",
-            "note": "Use GET /api/listeners/progress to monitor progress"
+            "note": "Use GET /api/listeners/progress to monitor progress and baseline updates"
         }
     except ValueError as e:
         update_detection_status(
@@ -1010,26 +1035,140 @@ async def get_realtime_status() -> Dict[str, Any]:
 
 @router.get("/progress")
 async def get_detection_progress() -> Dict[str, Any]:
-    """Get the current detection progress and status."""
+    """Get the current detection progress and status with baseline evolution information."""
     global current_detection_status
     
-    if current_detection_status["is_running"]:
-        # Calculate elapsed time and estimated remaining time
-        if current_detection_status["start_time"]:
-            elapsed = datetime.now() - current_detection_status["start_time"]
-            current_detection_status["elapsed_time"] = str(elapsed).split('.')[0]  # Remove microseconds
-            
-            # Estimate remaining time based on progress
-            if current_detection_status["progress"] > 0:
-                total_estimated = elapsed.total_seconds() / (current_detection_status["progress"] / 100)
-                remaining_seconds = total_estimated - elapsed.total_seconds()
-                if remaining_seconds > 0:
-                    current_detection_status["estimated_time_remaining"] = f"{int(remaining_seconds)}s"
-    
-    return {
-        "status": "running" if current_detection_status["is_running"] else "idle",
-        "detection_status": current_detection_status
-    }
+    try:
+        from ..dependencies import get_baseline_manager, is_baseline_evolution_enabled
+        
+        baseline_manager = get_baseline_manager()
+        baseline_evolution_enabled = is_baseline_evolution_enabled()
+        
+        # Get baseline information if available
+        baseline_info = {}
+        if baseline_evolution_enabled and current_detection_status.get("current_site"):
+            latest_baseline = baseline_manager.get_latest_baseline(current_detection_status["current_site"])
+            if latest_baseline:
+                baseline_info = {
+                    "current_baseline_date": latest_baseline.get("baseline_date"),
+                    "current_baseline_urls": len(latest_baseline.get("sitemap_state", {}).get("urls", [])),
+                    "baseline_evolution_type": latest_baseline.get("evolution_type", "unknown")
+                }
+        
+        if current_detection_status["is_running"]:
+            # Calculate elapsed time and estimated remaining time
+            if current_detection_status["start_time"]:
+                elapsed = datetime.now() - current_detection_status["start_time"]
+                current_detection_status["elapsed_time"] = str(elapsed).split('.')[0]  # Remove microseconds
+                
+                # Estimate remaining time based on progress
+                if current_detection_status["progress"] > 0:
+                    total_estimated = elapsed.total_seconds() / (current_detection_status["progress"] / 100)
+                    remaining_seconds = total_estimated - elapsed.total_seconds()
+                    if remaining_seconds > 0:
+                        current_detection_status["estimated_time_remaining"] = f"{int(remaining_seconds)}s"
+        
+        return {
+            "status": "running" if current_detection_status["is_running"] else "idle",
+            "detection_status": current_detection_status,
+            "baseline_evolution": {
+                "enabled": baseline_evolution_enabled,
+                "info": baseline_info
+            }
+        }
+    except Exception as e:
+        # Fallback to basic progress if baseline info fails
+        return {
+            "status": "running" if current_detection_status["is_running"] else "idle",
+            "detection_status": current_detection_status,
+            "baseline_evolution": {
+                "enabled": False,
+                "error": str(e)
+            }
+        }
+
+@router.get("/baselines")
+async def list_baselines(
+    site_id: str = Query(default=None, description="Filter by site ID")
+) -> Dict[str, Any]:
+    """List all available baselines with evolution information."""
+    try:
+        from ..dependencies import get_baseline_manager
+        
+        baseline_manager = get_baseline_manager()
+        baselines = baseline_manager.list_baselines(site_id)
+        
+        # Get detailed information for each baseline
+        detailed_baselines = {}
+        for site, dates in baselines.items():
+            detailed_baselines[site] = {
+                "total_baselines": len(dates),
+                "date_range": {"earliest": dates[0], "latest": dates[-1]} if dates else {},
+                "recent_baselines": dates[-5:] if len(dates) > 5 else dates,
+                "baseline_dates": dates
+            }
+        
+        return {
+            "status": "success",
+            "baselines": detailed_baselines,
+            "total_sites": len(detailed_baselines),
+            "baseline_evolution_enabled": True
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing baselines: {str(e)}")
+
+@router.get("/baselines/{site_id}")
+async def get_site_baselines(site_id: str) -> Dict[str, Any]:
+    """Get detailed baseline information for a specific site."""
+    try:
+        from ..dependencies import get_baseline_manager
+        
+        baseline_manager = get_baseline_manager()
+        
+        # Get latest baseline
+        latest_baseline = baseline_manager.get_latest_baseline(site_id)
+        
+        # Get all baselines for the site
+        all_baselines = baseline_manager.list_baselines(site_id)
+        site_baselines = all_baselines.get(site_id, [])
+        
+        # Get baseline info for each date
+        baseline_details = []
+        for date in site_baselines[-10:]:  # Last 10 baselines
+            baseline_info = baseline_manager.get_baseline_info(site_id, date)
+            if "error" not in baseline_info:
+                baseline_details.append(baseline_info)
+        
+        return {
+            "status": "success",
+            "site_id": site_id,
+            "latest_baseline": latest_baseline,
+            "baseline_history": baseline_details,
+            "total_baselines": len(site_baselines),
+            "baseline_evolution_enabled": True
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting site baselines: {str(e)}")
+
+@router.delete("/baselines/{site_id}")
+async def cleanup_site_baselines(
+    site_id: str,
+    days_to_keep: int = Query(default=30, ge=1, le=365, description="Number of days to keep")
+) -> Dict[str, Any]:
+    """Clean up old baselines for a specific site."""
+    try:
+        from ..dependencies import get_baseline_manager
+        
+        baseline_manager = get_baseline_manager()
+        cleanup_result = baseline_manager.cleanup_old_baselines(site_id, days_to_keep)
+        
+        return {
+            "status": "success",
+            "message": f"Baseline cleanup completed for {site_id}",
+            "cleanup_result": cleanup_result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error cleaning up baselines: {str(e)}")
 
 @router.get("/history")
 async def get_historical_data(

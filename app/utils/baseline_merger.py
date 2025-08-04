@@ -70,25 +70,16 @@ class BaselineMerger:
             # Start with previous baseline
             new_baseline = previous_baseline.copy()
             
-            # Update metadata
-            new_baseline.update({
-                "baseline_date": datetime.now().strftime("%Y%m%d"),
-                "updated_at": datetime.now().isoformat(),
-                "previous_baseline_date": previous_baseline.get("baseline_date"),
-                "changes_applied": len(detected_changes),
-                "evolution_type": "automatic_update"
-            })
-            
-            # Update sitemap state with current state
-            if "sitemap_state" in current_state:
-                new_baseline["sitemap_state"] = current_state["sitemap_state"]
-            
             # Update content hashes based on changes
             new_baseline["content_hashes"] = self._merge_content_hashes(
                 previous_baseline.get("content_hashes", {}),
                 current_state.get("content_hashes", {}),
                 change_info
             )
+            
+            # Update sitemap state with current state
+            if "sitemap_state" in current_state:
+                new_baseline["sitemap_state"] = current_state["sitemap_state"]
             
             # Update counts
             new_baseline["total_content_hashes"] = len(new_baseline["content_hashes"])
@@ -103,6 +94,14 @@ class BaselineMerger:
                 "unchanged_urls": len(change_info["unchanged_urls"]),
                 "change_validation": validation_result
             }
+            
+            # --- CRITICAL: Set the new baseline date and updated_at timestamp LAST ---
+            current_time = datetime.now()
+            new_baseline["baseline_date"] = current_time.strftime("%Y%m%d")
+            new_baseline["updated_at"] = current_time.isoformat()
+            new_baseline["previous_baseline_date"] = previous_baseline.get("baseline_date")
+            new_baseline["changes_applied"] = len(detected_changes)
+            new_baseline["evolution_type"] = "automatic_update"
             
             return new_baseline
             
