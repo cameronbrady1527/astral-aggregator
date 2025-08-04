@@ -76,8 +76,17 @@ class BaseDetector(ABC):
         self.site_url = site_config.url
     
     @abstractmethod
-    async def detect_changes(self, previous_state: Optional[Dict[str, Any]] = None) -> ChangeResult:
-        """Detect changes in the website."""
+    async def detect_changes(self, previous_baseline: Optional[Dict[str, Any]] = None) -> ChangeResult:
+        """
+        Detect changes in the website against a baseline.
+        
+        Args:
+            previous_baseline: The previous baseline to compare against. 
+                              If None, this is the first run and should establish a baseline.
+        
+        Returns:
+            ChangeResult: The result of the change detection operation
+        """
         pass
     
     @abstractmethod

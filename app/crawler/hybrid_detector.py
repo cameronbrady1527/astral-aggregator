@@ -75,59 +75,60 @@ class HybridDetector(BaseDetector):
                 "captured_at": datetime.now().isoformat()
             }
     
-    async def detect_changes(self, previous_state: Optional[Dict[str, Any]] = None) -> ChangeResult:
-        """Detect changes using both sitemap and content detection."""
+    async def detect_changes(self, previous_baseline: Optional[Dict[str, Any]] = None) -> ChangeResult:
+        """Detect changes using hybrid approach combining sitemap and content analysis."""
         result = self.create_result()
         
         try:
+            # Get current state
             current_state = await self.get_current_state()
             
-            if previous_state is None:
-                result.metadata["message"] = "First run - established hybrid baseline"
-                result.metadata["total_duration"] = current_state.get("total_duration", 0)
+            if previous_baseline is None:
+                result.metadata["message"] = "First run - establishing hybrid baseline"
+                result.metadata["total_urls"] = len(current_state.get("urls", []))
+                result.metadata["total_content_hashes"] = len(current_state.get("content_hashes", {}))
                 return result
             
-            # Detect sitemap changes (always run)
-            sitemap_changes = await self.sitemap_detector.detect_changes(
-                previous_state.get("sitemap_state")
-            )
+            # Compare sitemap URLs
+            baseline_urls = set(previous_baseline.get("sitemap_state", {}).get("urls", []))
+            current_urls = set(current_state.get("urls", []))
             
-            # Add sitemap changes to result
-            for change in sitemap_changes.changes:
-                result.add_change(
-                    change["change_type"],
-                    change["url"],
-                    title=change.get("title", ""),
-                    description=change.get("description", ""),
-                    metadata=change.get("metadata", {})
-                )
+            new_urls = current_urls - baseline_urls
+            deleted_urls = baseline_urls - current_urls
+            common_urls = baseline_urls & current_urls
             
-            # Detect content changes (if enabled and should run)
-            content_changes = None
-            if (self.enable_content_detection and 
-                current_state.get("content_state") and 
-                previous_state.get("content_state")):
+            # Add sitemap changes
+            for url in new_urls:
+                result.add_change("new", url, title=f"New page: {url}")
+            
+            for url in deleted_urls:
+                result.add_change("deleted", url, title=f"Removed page: {url}")
+            
+            # Compare content hashes for common URLs
+            baseline_hashes = previous_baseline.get("content_hashes", {})
+            current_hashes = current_state.get("content_hashes", {})
+            
+            content_changes = 0
+            for url in common_urls:
+                baseline_hash = baseline_hashes.get(url, {}).get("hash")
+                current_hash = current_hashes.get(url, {}).get("hash")
                 
-                content_changes = await self.content_detector.detect_changes(
-                    previous_state.get("content_state")
-                )
-                
-                # Add content changes to result
-                for change in content_changes.changes:
+                if baseline_hash and current_hash and baseline_hash != current_hash:
                     result.add_change(
-                        change["change_type"],
-                        change["url"],
-                        title=change.get("title", ""),
-                        description=change.get("description", ""),
-                        metadata=change.get("metadata", {})
+                        "content_changed",
+                        url,
+                        title=f"Content modified: {url}",
+                        description=f"Content hash changed from {baseline_hash[:8]} to {current_hash[:8]}"
                     )
+                    content_changes += 1
             
-            # Update metadata
+            # Add metadata
             result.metadata.update({
-                "sitemap_changes": len(sitemap_changes.changes),
-                "content_changes": len(content_changes.changes) if content_changes else 0,
-                "total_duration": current_state.get("total_duration", 0),
-                "detection_methods": ["sitemap", "content"] if content_changes else ["sitemap"]
+                "total_urls": len(current_urls),
+                "new_urls": len(new_urls),
+                "deleted_urls": len(deleted_urls),
+                "content_changes": content_changes,
+                "hybrid_analysis": True
             })
             
         except Exception as e:

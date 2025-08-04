@@ -182,43 +182,27 @@ async def trigger_info() -> Dict[str, Any]:
 
 @router.post("/trigger/{site_id}")
 async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
-    """Manually trigger change detection for a specific site with progress tracking."""
+    """
+    Trigger change detection for a specific site.
+    
+    This endpoint starts the change detection process and returns immediately.
+    Use the progress endpoint to monitor the detection status.
+    """
     try:
-        change_detector = get_change_detector()
-        if change_detector is None:
-            raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
+        # Initialize change detector
+        change_detector = ChangeDetector()
         
-        # Check if detection is already running
-        if current_detection_status["is_running"]:
-            # Check if it's been running for more than 10 minutes (likely stuck)
-            if current_detection_status["start_time"]:
-                elapsed = datetime.now() - current_detection_status["start_time"]
-                if elapsed.total_seconds() > 600:  # 10 minutes
-                    # Reset stuck detection
-                    update_detection_status(
-                        is_running=False,
-                        current_site=None,
-                        progress=0,
-                        message="Reset stuck detection"
-                    )
-                else:
-                    return {
-                        "status": "already_running",
-                        "message": f"Detection already running for {current_detection_status['current_site']}",
-                        "progress_url": "/api/listeners/progress"
-                    }
-        
-        # Initialize progress tracking
-        update_detection_status(
-            is_running=True,
-            current_site=site_id,
-            start_time=datetime.now(),
-            progress=0,
-            message="Starting detection...",
-            pages_processed=0,
-            total_pages=0,
-            credits_used=0
-        )
+        # Update detection status
+        def update_detection_status(current_method: str = "", progress: int = 0, 
+                                  message: str = "", is_running: bool = True):
+            detection_status.update(
+                current_method=current_method,
+                progress=progress,
+                message=message,
+                is_running=is_running,
+                total_pages=0,
+                credits_used=0
+            )
         
         # Run detection with progress updates
         async def run_detection_with_progress():
@@ -261,15 +245,25 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
         return {
             "status": "started",
             "message": f"Change detection started for {site_id}",
+            "baseline_evolution_enabled": True,
+            "baseline_updated": False,  # Will be updated when detection completes
             "progress_url": "/api/listeners/progress",
             "note": "Use GET /api/listeners/progress to monitor progress"
         }
     except ValueError as e:
-        update_detection_status(is_running=False, message=f"Error: {str(e)}")
+        update_detection_status(
+            progress=0,
+            message=f"Detection failed: {str(e)}",
+            is_running=False
+        )
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        update_detection_status(is_running=False, message=f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
+        update_detection_status(
+            progress=0,
+            message=f"Detection failed: {str(e)}",
+            is_running=False
+        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/trigger/all")

@@ -85,12 +85,12 @@ class FirecrawlDetector(BaseDetector):
                 "firecrawl_base_url": self.base_url
             }
     
-    async def detect_changes(self, previous_state: Optional[Dict[str, Any]] = None) -> ChangeResult:
+    async def detect_changes(self, previous_baseline: Optional[Dict[str, Any]] = None) -> ChangeResult:
         """Detect changes using Firecrawl with optimized performance."""
         result = self.create_result()
         
         try:
-            if previous_state is None:
+            if previous_baseline is None:
                 crawl_data = await self._crawl_with_optimizations()
                 result.metadata["message"] = "First run - established baseline with optimized crawl"
                 result.metadata["total_pages_crawled"] = len(crawl_data.get("data", []))
@@ -98,7 +98,7 @@ class FirecrawlDetector(BaseDetector):
                 return result
             
             # Use incremental crawling for change detection
-            crawl_data = await self._incremental_crawl(previous_state)
+            crawl_data = await self._incremental_crawl(previous_baseline)
             
             # Process change tracking data
             changes_detected = 0
@@ -126,18 +126,13 @@ class FirecrawlDetector(BaseDetector):
             self._update_performance_metrics(crawl_data)
             
             result.metadata.update({
-                "firecrawl_response": crawl_data,
-                "api_endpoint": "FirecrawlApp SDK (Optimized)",
                 "total_pages_crawled": len(crawl_data.get("data", [])),
-                "credits_used": crawl_data.get("creditsUsed", 0),
-                "performance_metrics": crawl_data.get("performance_metrics", {}),
                 "changes_detected": changes_detected,
-                "optimizations_applied": ["incremental_crawl", "adaptive_timeout", "performance_monitoring"]
+                "optimizations": ["incremental_crawl", "change_tracking"]
             })
             
         except Exception as e:
             result.metadata["error"] = str(e)
-            result.metadata["api_endpoint"] = "FirecrawlApp SDK (Optimized)"
         
         return result
     

@@ -76,36 +76,37 @@ class ContentDetector(BaseDetector):
                 "captured_at": datetime.now().isoformat()
             }
     
-    async def detect_changes(self, previous_state: Optional[Dict[str, Any]] = None) -> ChangeResult:
-        """Detect content changes by comparing content hashes."""
+    async def detect_changes(self, previous_baseline: Optional[Dict[str, Any]] = None) -> ChangeResult:
+        """Detect content changes by comparing content hashes against baseline."""
         result = self.create_result()
         
         try:
             current_state = await self.get_current_state()
             
-            if previous_state is None:
-                result.metadata["message"] = "First run - established content baseline"
+            if previous_baseline is None:
+                result.metadata["message"] = "First run - establishing content baseline"
                 result.metadata["pages_checked"] = current_state.get("total_pages", 0)
                 return result
             
-            previous_hashes = previous_state.get("content_hashes", {})
+            # Compare content hashes from baseline
+            baseline_hashes = previous_baseline.get("content_hashes", {})
             current_hashes = current_state.get("content_hashes", {})
             
             # Find changed content
             changed_urls = []
             for url, current_hash in current_hashes.items():
-                previous_hash = previous_hashes.get(url)
-                if previous_hash and previous_hash != current_hash:
+                baseline_hash = baseline_hashes.get(url)
+                if baseline_hash and baseline_hash != current_hash:
                     changed_urls.append(url)
                     result.add_change(
                         "content_changed", 
                         url, 
                         title=f"Content changed: {url}",
-                        description=f"Content hash changed from {previous_hash[:8]} to {current_hash[:8]}"
+                        description=f"Content hash changed from {baseline_hash[:8]} to {current_hash[:8]}"
                     )
             
             # Find new pages with content
-            new_urls = set(current_hashes.keys()) - set(previous_hashes.keys())
+            new_urls = set(current_hashes.keys()) - set(baseline_hashes.keys())
             for url in new_urls:
                 result.add_change(
                     "new_content", 

@@ -68,28 +68,29 @@ class SitemapDetector(BaseDetector):
                 "site_url": self.site_url
             }
     
-    async def detect_changes(self, previous_state: Optional[Dict[str, Any]] = None) -> ChangeResult:
-        """Detect changes by comparing current sitemap with previous state."""
+    async def detect_changes(self, previous_baseline: Optional[Dict[str, Any]] = None) -> ChangeResult:
+        """Detect changes by comparing current sitemap with previous baseline."""
         result = self.create_result()
         
         try:
             current_urls, sitemap_info = await self._fetch_all_sitemap_urls()
             current_state = await self.get_current_state()
             
-            if previous_state is None:
-                result.metadata["message"] = "First run - no previous state to compare"
+            if previous_baseline is None:
+                result.metadata["message"] = "First run - establishing baseline"
                 result.metadata["current_urls"] = len(current_urls)
                 result.metadata["sitemap_info"] = sitemap_info
                 return result
             
-            previous_urls = set(previous_state.get("urls", []))
+            # Compare against baseline URLs
+            baseline_urls = set(previous_baseline.get("sitemap_state", {}).get("urls", []))
             current_urls_set = set(current_urls)
             
-            new_urls = current_urls_set - previous_urls
+            new_urls = current_urls_set - baseline_urls
             for url in new_urls:
                 result.add_change("new", url, title=f"New page: {url}")
             
-            deleted_urls = previous_urls - current_urls_set
+            deleted_urls = baseline_urls - current_urls_set
             
             # Verify that "deleted" URLs are actually deleted by checking if they still exist
             if self.verify_deleted_urls and deleted_urls:
@@ -103,7 +104,7 @@ class SitemapDetector(BaseDetector):
             # Add metadata about verification
             result.metadata.update({
                 "current_urls": len(current_urls),
-                "previous_urls": len(previous_urls),
+                "baseline_urls": len(baseline_urls),
                 "new_urls": len(new_urls),
                 "deleted_urls": len(verified_deleted_urls),
                 "unverified_deleted_urls": len(deleted_urls) - len(verified_deleted_urls),
