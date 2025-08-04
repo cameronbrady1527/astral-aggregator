@@ -1,4 +1,4 @@
-# Website Change Detection System
+# Astral API - Website Change Detection System
 
 A robust, scalable system for monitoring website changes using multiple detection methods. Currently supports sitemap-based detection and Firecrawl API integration.
 
@@ -98,503 +98,282 @@ The dashboard provides:
 
 ### 5. Test the System
 
-**Option 1: Test via API (Recommended)**
-```bash
-# Check system status (works in browser)
-curl "http://localhost:8000/api/listeners/status"
-
-# Trigger change detection for Judiciary UK
-curl -X POST "http://localhost:8000/api/listeners/trigger/judiciary_uk"
-
-# View recent changes
-curl "http://localhost:8000/api/listeners/changes/judiciary_uk"
-```
-
-**Option 2: Run test scripts**
-```bash
-# Run the test script
-python tests/test_change_detection.py
-
-# Or use the test runner
-python run_tests.py
-
-# Run with coverage
-python run_tests.py --coverage
-```
-
-**Option 3: Interactive API Documentation**
-Visit `http://localhost:8000/docs` in your browser for interactive API testing.
-
-## Project Structure
-
-```
-aggregator/
-├── app/                    # Main application code
-│   ├── crawler/           # Change detection modules
-│   ├── db/                # Database models and operations
-│   ├── routers/           # FastAPI route handlers
-│   │   ├── dashboard.py   # Web dashboard endpoints
-│   │   ├── listeners.py   # Change detection API
-│   │   ├── users.py       # User management (placeholder)
-│   │   └── items.py       # Item management (placeholder)
-│   └── utils/             # Utility functions
-├── config/                # Configuration files
-│   ├── sites.yaml         # Site configuration (not in git)
-│   ├── sites.yaml.example # Example configuration
-│   └── sites_railway.yaml.example # Railway-specific config
-├── docs/                  # Documentation
-│   ├── deploy.md          # Deployment guide
-│   ├── plan.md            # Project planning
-│   ├── SETUP.md           # Setup instructions
-│   └── README.md          # Documentation overview
-├── scripts/               # Deployment and utility scripts
-│   ├── healthcheck.py     # Python health check script
-│   ├── healthcheck.sh     # Bash health check script
-│   ├── railway_start.py   # Railway startup script
-│   ├── start.py           # Local startup script
-│   ├── diagnose.py        # System diagnostics
-│   ├── deploy_debug.py    # Deployment debugging
-│   └── README.md          # Scripts documentation
-├── tests/                 # Test files
-│   ├── unit/             # Unit tests
-│   ├── integration/      # Integration tests
-│   ├── api/              # API tests
-│   ├── test_healthcheck.py # Local health check testing
-│   └── README.md         # Testing documentation
-├── output/               # Generated output (not in git)
-├── Dockerfile            # Container configuration
-├── railway.toml          # Railway deployment config
-├── pyproject.toml        # Project metadata and dependencies
-├── requirements.txt      # Python dependencies
-└── run_tests.py          # Test runner script
-```
-
-## API Endpoints
-
-### Health Check & Documentation
-```bash
-# Health check (works in browser)
-curl "http://localhost:8000/"
-
-# Interactive API documentation (works in browser)
-# Visit: http://localhost:8000/docs
-```
-
-### Dashboard
-```bash
-# Web dashboard (works in browser)
-# Visit: http://localhost:8000/dashboard/
-```
-
-### Trigger Change Detection (POST requests only)
-
-**Important**: These endpoints require POST requests, not GET requests.
+Run the comprehensive test suite to ensure everything is working correctly:
 
 ```bash
-# Detect changes for a specific site
-curl -X POST "http://localhost:8000/api/listeners/trigger/judiciary_uk"
+# Run all tests
+pytest
 
-# Detect changes for Waverley Council
-curl -X POST "http://localhost:8000/api/listeners/trigger/waverley_gov"
+# Run with verbose output
+pytest -v
 
-# Detect changes for all sites
-curl -X POST "http://localhost:8000/api/listeners/trigger/all"
+# Run with coverage report
+pytest --cov=app --cov-report=html
+
+# Run specific test categories
+pytest tests/unit/      # Unit tests only
+pytest tests/api/       # API tests only
+pytest tests/integration/ # Integration tests only
 ```
 
-**Using PowerShell:**
-```powershell
-# Trigger detection for Judiciary UK
-Invoke-RestMethod -Uri "http://localhost:8000/api/listeners/trigger/judiciary_uk" -Method POST
+## API Usage
+
+### Core Endpoints
+
+#### Health and Status
+```bash
+# Check system health
+curl http://localhost:8000/health
+
+# Simple ping
+curl http://localhost:8000/ping
+
+# Debug information
+curl http://localhost:8000/debug
+```
+
+#### Change Detection
+```bash
+# Trigger detection for a specific site
+curl -X POST http://localhost:8000/api/listeners/trigger/test_site
 
 # Trigger detection for all sites
-Invoke-RestMethod -Uri "http://localhost:8000/api/listeners/trigger/all" -Method POST
-```
+curl -X POST http://localhost:8000/api/listeners/trigger/all
 
-### View Status and Results (GET requests - work in browser)
-
-```bash
 # Get system status
-curl "http://localhost:8000/api/listeners/status"
+curl http://localhost:8000/api/listeners/status
 
-# List all sites
-curl "http://localhost:8000/api/listeners/sites"
-
-# Get site status
-curl "http://localhost:8000/api/listeners/sites/judiciary_uk"
-
-# Get recent changes for a site
-curl "http://localhost:8000/api/listeners/changes/judiciary_uk"
-
-# Get all recent changes
-curl "http://localhost:8000/api/listeners/changes"
+# Get list of configured sites
+curl http://localhost:8000/api/listeners/sites
 ```
 
-### Helpful Information Endpoints (GET requests - work in browser)
-
-These endpoints provide guidance and information about using the API:
-
+#### Analytics and History
 ```bash
-# Main API overview
-curl "http://localhost:8000/"
+# Get system analytics
+curl http://localhost:8000/api/listeners/analytics
 
-# Listeners API overview with all endpoints
-curl "http://localhost:8000/api/listeners/"
+# Get site-specific analytics
+curl http://localhost:8000/api/listeners/analytics/test_site
 
-# Trigger instructions and examples
-curl "http://localhost:8000/api/listeners/trigger"
+# Get recent changes
+curl http://localhost:8000/api/listeners/changes
 
-# Site-specific trigger information
-curl "http://localhost:8000/api/listeners/trigger/judiciary_uk"
+# Get historical data
+curl http://localhost:8000/api/listeners/history?days=7
 ```
 
-**Browser-friendly URLs:**
-- Main API info: `http://localhost:8000/`
-- Dashboard: `http://localhost:8000/dashboard/`
-- Listeners API overview: `http://localhost:8000/api/listeners/`
-- Trigger instructions: `http://localhost:8000/api/listeners/trigger`
-- Site-specific trigger info: `http://localhost:8000/api/listeners/trigger/judiciary_uk`
-- System status: `http://localhost:8000/api/listeners/status`
-- All sites: `http://localhost:8000/api/listeners/sites`
-- Judiciary UK status: `http://localhost:8000/api/listeners/sites/judiciary_uk`
-- Judiciary UK changes: `http://localhost:8000/api/listeners/changes/judiciary_uk`
-- All changes: `http://localhost:8000/api/listeners/changes`
-- Interactive API docs: `http://localhost:8000/docs`
+### API Documentation
+
+Interactive API documentation is available at:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **OpenAPI Schema**: http://localhost:8000/openapi.json
+
+## Testing
+
+### Running Tests
+
+The project includes a comprehensive test suite covering unit tests, API tests, and integration tests.
+
+#### Prerequisites
+```bash
+# Install test dependencies
+pip install pytest pytest-asyncio httpx
+```
+
+#### Test Commands
+```bash
+# Run all tests
+pytest
+
+# Run with verbose output
+pytest -v
+
+# Run with coverage
+pytest --cov=app --cov-report=html
+
+# Run specific test categories
+pytest tests/unit/           # Unit tests
+pytest tests/api/            # API tests  
+pytest tests/integration/    # Integration tests
+
+# Run specific test file
+pytest tests/unit/test_config.py
+
+# Run tests in parallel
+pytest -n auto
+
+# Run tests and stop on first failure
+pytest -x
+```
+
+#### Test Categories
+
+- **Unit Tests** (`tests/unit/`): Test individual components in isolation
+- **API Tests** (`tests/api/`): Test FastAPI endpoints and HTTP responses
+- **Integration Tests** (`tests/integration/`): Test complete workflows
+
+#### Coverage Goals
+
+- **Unit Tests**: 90%+ coverage of core business logic
+- **API Tests**: 100% coverage of all endpoints
+- **Integration Tests**: Key workflow scenarios and error conditions
+
+For detailed testing information, see [tests/README.md](tests/README.md).
 
 ## Configuration
 
 ### Site Configuration
 
-Edit `config/sites.yaml` to configure sites:
+Sites are configured in `config/sites.yaml`:
 
 ```yaml
 sites:
-  judiciary_uk:
-    name: "Judiciary UK"
-    url: "https://www.judiciary.uk/"
-    sitemap_url: "https://www.judiciary.uk/sitemap.xml"
+  site_id:
+    name: "Site Name"
+    url: "https://example.com/"
+    sitemap_url: "https://example.com/sitemap.xml"
     detection_methods: ["sitemap", "firecrawl"]
-    check_interval_minutes: 1440  # 24 hours
+    check_interval_minutes: 1440
     is_active: true
 ```
 
-### Adding New Sites
+### Environment Variables
 
-1. Add a new entry to the `sites` section in `config/sites.yaml`
-2. Set the `sitemap_url` (or let the system guess it)
-   - For single sitemaps: `https://example.com/sitemap.xml`
-   - For sitemap indexes: `https://example.com/sitemap_index.xml`
-3. Choose detection methods: `["sitemap"]`, `["firecrawl"]`, or `["sitemap", "firecrawl"]`
-4. Set the check interval in minutes
-
-**Note**: The system automatically detects whether a URL points to a single sitemap or a sitemap index and handles both cases appropriately.
+- `CONFIG_FILE`: Path to configuration file (default: `config/sites.yaml`)
+- `PORT`: Server port (default: 8000)
+- `RAILWAY_ENVIRONMENT`: Set to enable Railway-specific configuration
 
 ### Firecrawl Configuration
 
-**Note:** Firecrawl detection requires a paid API plan with sufficient credits. The free tier may have limitations.
-
-To use Firecrawl detection, add your API key to the configuration:
-
 ```yaml
 firecrawl:
-  api_key: "your_firecrawl_api_key_here"
+  api_key: "your-api-key"
   base_url: "https://api.firecrawl.dev"
 ```
 
-**Important:** If you see "Payment Required: Insufficient credits" errors, you can:
-1. Upgrade your Firecrawl plan at https://firecrawl.dev/pricing
-2. Use only sitemap detection by setting `detection_methods: ["sitemap"]`
-3. The sitemap detection works perfectly without requiring any API keys
+## Development
+
+### Project Structure
+
+```
+aggregator/
+├── app/                    # Main application code
+│   ├── main.py            # FastAPI application entry point
+│   ├── routers/           # API route handlers
+│   ├── crawler/           # Change detection logic
+│   ├── utils/             # Utility functions
+│   └── db/                # Database models (if applicable)
+├── tests/                 # Test suite
+│   ├── unit/              # Unit tests
+│   ├── api/               # API tests
+│   └── integration/       # Integration tests
+├── config/                # Configuration files
+├── scripts/               # Utility scripts
+└── docs/                  # Documentation
+```
+
+### Adding New Detection Methods
+
+1. Create a new detector class in `app/crawler/`
+2. Inherit from `BaseDetector`
+3. Implement required methods
+4. Add to site configuration
+5. Update tests
+
+### Adding New Sites
+
+1. Add site configuration to `config/sites.yaml`
+2. Test with the API endpoints
+3. Verify detection works correctly
 
 ## Deployment
 
 ### Docker Deployment
 
-The project includes a Dockerfile for containerized deployment:
-
 ```bash
-# Build the Docker image
-docker build -t astral-aggregator .
+# Build the image
+docker build -t astral-api .
 
 # Run the container
-docker run -p 8000:8000 astral-aggregator
-
-# Run with custom configuration
-docker run -p 8000:8000 -v $(pwd)/config:/app/config astral-aggregator
+docker run -p 8000:8000 astral-api
 ```
 
 ### Railway Deployment
 
-The project is optimized for Railway deployment with:
+The project is optimized for Railway deployment:
 
-- `railway.toml` configuration
-- Railway-specific startup scripts
-- Health check endpoints
-- Environment-specific configurations
-
-**Deployment Steps:**
 1. Connect your repository to Railway
-2. Set environment variables in Railway dashboard
-3. Deploy using Railway's automatic deployment
+2. Set environment variables
+3. Deploy automatically
 
-### Local Development
+### Health Checks
 
-For development, you can use any of the installation methods above. If you're using `uv`, you can also run:
-
-```bash
-# Install in development mode
-uv sync --dev
-
-# Run the server with auto-reload
-uv run uvicorn app.main:app --reload
-```
-
-## Testing
-
-### Test Structure
-
-The project includes comprehensive testing with pytest:
-
-```
-tests/
-├── unit/              # Unit tests for individual components
-├── integration/       # Integration tests for workflows
-├── api/              # API endpoint tests
-└── test_healthcheck.py # Health check testing
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=app --cov-report=html
-
-# Run specific test categories
-uv run pytest tests/unit/           # Unit tests only
-uv run pytest tests/integration/    # Integration tests only
-uv run pytest tests/api/            # API tests only
-
-# Run with the test runner script
-python run_tests.py
-python run_tests.py --coverage
-python run_tests.py --type unit
-```
-
-### Test Categories
-
-- **Unit Tests**: Test individual components in isolation
-- **Integration Tests**: Test component interactions and workflows
-- **API Tests**: Test FastAPI endpoints and HTTP responses
-
-## Output Format
-
-### Change Detection Results
-
-Results are stored in timestamped folders within the `output/` directory. Each run creates a new folder with the format `YYYYMMDD_HHMMSS` containing all JSON files for that execution:
-
-```
-output/
-├── 20250730_154609/                    # Run timestamp
-│   ├── Judiciary UK_20250730_154609.json
-│   ├── Judiciary UK_state_20250730_154609.json
-│   ├── Waverley Borough Council_20250730_154611.json
-│   └── Waverley Borough Council_state_20250730_154611.json
-├── 20250730_154611/                    # Another run
-│   ├── Judiciary UK_20250730_154612.json
-│   └── ...
-└── ...
-```
-
-Each JSON file has the following structure:
-
-```json
-{
-  "metadata": {
-    "site_name": "Judiciary UK",
-    "detection_time": "2024-01-15T10:30:00Z",
-    "detection_method": "sitemap",
-    "file_created": "2024-01-15T10:30:00Z",
-    "run_timestamp": "20250730_154609"
-  },
-  "changes": {
-    "site_id": "judiciary_uk",
-    "site_name": "Judiciary UK",
-    "detection_time": "2024-01-15T10:30:00Z",
-    "methods": {
-      "sitemap": {
-        "detection_method": "sitemap",
-        "site_name": "Judiciary UK",
-        "detection_time": "2024-01-15T10:30:00Z",
-        "changes": [
-          {
-            "url": "https://www.judiciary.uk/new-page",
-            "change_type": "new",
-            "detected_at": "2024-01-15T10:30:00Z",
-            "title": "New page: https://www.judiciary.uk/new-page"
-          }
-        ],
-        "summary": {
-          "total_changes": 1,
-          "new_pages": 1,
-          "modified_pages": 0,
-          "deleted_pages": 0
-        },
-                 "metadata": {
-           "current_urls": 150,
-           "previous_urls": 149,
-           "new_urls": 1,
-           "deleted_urls": 0,
-           "sitemap_url": "https://www.judiciary.uk/sitemap_index.xml",
-           "sitemap_info": {
-             "type": "sitemap_index",
-             "total_sitemaps": 23,
-             "total_urls": 19255,
-             "sitemaps": [
-               {
-                 "url": "https://www.judiciary.uk/post-sitemap.xml",
-                 "status": "success",
-                 "urls": 507,
-                 "last_modified": "2025-07-25T16:31:23+00:00"
-               }
-             ]
-           }
-         }
-      }
-    }
-  }
-}
-```
-
-## Detection Methods
-
-### Sitemap Detection
-
-- **Pros**: Fast, lightweight, good for detecting new pages, supports sitemap indexes
-- **Cons**: Only detects new/deleted pages, not content changes
-- **Use Case**: Initial baseline and new page detection
-- **Features**: 
-  - Supports single sitemaps and sitemap indexes
-  - Handles multiple sitemaps per site (e.g., posts, pages, judgments)
-  - Parallel processing of individual sitemaps for performance
-
-### Firecrawl Detection
-
-- **Pros**: Sophisticated change detection, content analysis
-- **Cons**: Requires API key, slower, more expensive
-- **Use Case**: Detailed change analysis and content monitoring
-
-## File Structure
-
-```
-aggregator/
-├── app/
-│   ├── crawler/
-│   │   ├── base_detector.py      # Abstract base class
-│   │   ├── sitemap_detector.py   # Sitemap-based detection
-│   │   ├── firecrawl_detector.py # Firecrawl API integration
-│   │   └── change_detector.py    # Main orchestrator
-│   ├── routers/
-│   │   ├── dashboard.py          # Web dashboard endpoints
-│   │   └── listeners.py          # API endpoints
-│   ├── utils/
-│   │   ├── json_writer.py        # JSON file management
-│   │   └── config.py             # Configuration management
-│   └── main.py                   # FastAPI application
-├── config/
-│   └── sites.yaml                # Site configuration
-├── output/                       # Timestamped run folders with JSON files
-├── test_change_detection.py      # Test script
-└── README.md
-```
-
-## Development
-
-### Development Setup
-
-For development, you can use any of the installation methods above. If you're using `uv`, you can also run:
-
-```bash
-# Install in development mode
-uv sync --dev
-
-# Run the server with auto-reload
-uv run uvicorn app.main:app --reload
-```
-
-### Adding New Detection Methods
-
-1. Create a new detector class that inherits from `BaseDetector`
-2. Implement the required methods: `detect_changes()` and `get_current_state()`
-3. Add the new method to the `_create_detector()` method in `ChangeDetector`
-4. Update the configuration schema if needed
-
-### Testing
-
-```bash
-# Run the test script
-python test_change_detection.py
-
-# Run specific tests
-python -c "
-import asyncio
-from test_change_detection import test_sitemap_detection
-asyncio.run(test_sitemap_detection())
-"
-```
-
-## Scripts and Utilities
-
-The `scripts/` directory contains various utility scripts:
-
-- **`healthcheck.py`**: Python-based health check for Docker containers
-- **`healthcheck.sh`**: Bash-based health check fallback
-- **`railway_start.py`**: Railway-optimized startup script
-- **`start.py`**: Local development startup script
-- **`diagnose.py`**: System diagnostics and troubleshooting
-- **`deploy_debug.py`**: Deployment debugging utilities
-
-## Future Enhancements
-
-- [ ] **Supabase Database Integration**: Replace file-based storage with Supabase PostgreSQL for scalable data management and real-time queries
-- [ ] Scheduled detection using cron jobs
-- [ ] Webhook notifications
-- [ ] Email/Slack alerts
-- [ ] Enhanced web interface for monitoring
-- [ ] More detection methods (RSS feeds, API endpoints)
-- [ ] Content diff visualization
-- [ ] Historical change analysis
-- [ ] User authentication and authorization
-- [ ] Multi-tenant support
+The application includes health check endpoints:
+- `/health` - System health status
+- `/ping` - Simple connectivity test
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"405 Method Not Allowed" errors**: 
-   - Trigger endpoints require POST requests, not GET requests
-   - Use `curl -X POST` or `Invoke-RestMethod -Method POST`
-   - Visit the helpful GET endpoints for guidance: `/api/listeners/trigger`
+1. **Configuration Errors**: Ensure `config/sites.yaml` exists and is valid YAML
+2. **API Key Issues**: Verify Firecrawl API key is correct and has sufficient credits
+3. **Port Conflicts**: Change the port if 8000 is already in use
+4. **Import Errors**: Ensure all dependencies are installed
 
-2. **Sitemap not found**: Check if the sitemap URL is correct in the configuration
-3. **Firecrawl API errors**: Verify your API key and check the Firecrawl documentation
-4. **Permission errors**: Ensure the `output/` directory is writable
-5. **Network timeouts**: Increase timeout values in the configuration
-6. **Dashboard not loading**: Check if the dashboard router is properly loaded
+### Debug Mode
+
+Enable debug output:
+```bash
+# Set debug environment variable
+export DEBUG=true
+
+# Run with debug logging
+uvicorn app.main:app --reload --log-level debug
+```
 
 ### Logs
 
-Check the console output for detailed error messages. The system provides comprehensive error reporting for debugging.
+Check application logs for detailed error information:
+```bash
+# View logs in real-time
+tail -f logs/app.log
+```
 
-### Health Checks
+## Contributing
 
-The system includes multiple health check mechanisms:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass
+6. Submit a pull request
 
-- **Docker health checks**: Automatic container health monitoring
-- **Railway health checks**: Platform-specific health monitoring
-- **Manual health checks**: Use the scripts in the `scripts/` directory
+### Development Setup
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd aggregator
+
+# Install dependencies
+uv sync
+
+# Run tests
+pytest
+
+# Start development server
+uvicorn app.main:app --reload
+```
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+For support and questions:
+- Check the documentation in `docs/`
+- Review the test examples in `tests/`
+- Open an issue on GitHub

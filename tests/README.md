@@ -1,320 +1,214 @@
-# Test Suite Documentation
+# Astral API Test Suite
 
-## Overview
-
-This test suite provides comprehensive testing for the aggregator project using pytest. The tests are organized into different categories and use modern Python testing practices.
+This directory contains comprehensive tests for the Astral API website change detection system.
 
 ## Test Structure
 
 ```
 tests/
-├── __init__.py                 # Test package initialization
 ├── conftest.py                 # Shared fixtures and configuration
-├── test_basic.py              # Basic functionality tests
-├── unit/                      # Unit tests
-│   ├── __init__.py
+├── unit/                       # Unit tests for individual components
 │   ├── test_config.py         # Configuration management tests
-│   └── test_sitemap_detector.py # Sitemap detector tests
-├── integration/               # Integration tests
-│   ├── __init__.py
-│   └── test_change_detection.py # End-to-end change detection tests
-└── api/                       # API tests
-    ├── __init__.py
-    └── test_listeners.py      # FastAPI endpoint tests
+│   ├── test_base_detector.py  # Base detector class tests
+│   └── test_json_writer.py    # JSON writer utility tests
+├── api/                        # API endpoint tests
+│   ├── test_main_endpoints.py # Main application endpoints
+│   ├── test_listeners.py      # Listeners router endpoints
+│   └── test_dashboard.py      # Dashboard router endpoints
+└── integration/               # Integration tests
+    └── test_change_detection.py # Complete workflow tests
+```
+
+## Running Tests
+
+### Prerequisites
+
+Ensure you have the required dependencies installed:
+
+```bash
+pip install pytest pytest-asyncio httpx
+```
+
+### Running All Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with verbose output
+pytest -v
+
+# Run with coverage report
+pytest --cov=app --cov-report=html
+```
+
+### Running Specific Test Categories
+
+```bash
+# Run only unit tests
+pytest tests/unit/
+
+# Run only API tests
+pytest tests/api/
+
+# Run only integration tests
+pytest tests/integration/
+
+# Run specific test file
+pytest tests/unit/test_config.py
+```
+
+### Running Tests with Different Options
+
+```bash
+# Run tests in parallel (requires pytest-xdist)
+pytest -n auto
+
+# Run tests and stop on first failure
+pytest -x
+
+# Run tests and show local variables on failure
+pytest -l
+
+# Run tests with detailed output
+pytest -s
 ```
 
 ## Test Categories
 
 ### Unit Tests (`tests/unit/`)
-- **Purpose**: Test individual components in isolation
-- **Scope**: Single functions, classes, or modules
-- **Speed**: Fast execution
-- **Dependencies**: Mocked external dependencies
 
-### Integration Tests (`tests/integration/`)
-- **Purpose**: Test component interactions and workflows
-- **Scope**: Multiple components working together
-- **Speed**: Medium execution time
-- **Dependencies**: Some real dependencies, mocked external services
+Test individual components in isolation:
+
+- **Configuration Management**: Tests for `SiteConfig` and `ConfigManager` classes
+- **Base Detector**: Tests for `ChangeResult` and `BaseDetector` classes
+- **JSON Writer**: Tests for file writing and data serialization
 
 ### API Tests (`tests/api/`)
-- **Purpose**: Test FastAPI endpoints and HTTP responses
-- **Scope**: API contract and response validation
-- **Speed**: Fast execution
-- **Dependencies**: Mocked backend services
 
-## Running Tests
+Test FastAPI endpoints and HTTP responses:
 
-### Basic Commands
+- **Main Endpoints**: Health checks, debug info, and basic functionality
+- **Listeners API**: Change detection triggers and status endpoints
+- **Dashboard**: HTML responses and frontend functionality
 
-```bash
-# Run all tests
-uv run pytest
+### Integration Tests (`tests/integration/`)
 
-# Run with verbose output
-uv run pytest -v
+Test complete workflows and component interactions:
 
-# Run with coverage
-uv run pytest --cov=app --cov-report=html
-
-# Run specific test file
-uv run pytest tests/unit/test_config.py
-
-# Run specific test function
-uv run pytest tests/unit/test_config.py::test_config_manager_initialization
-```
-
-### Using the Test Runner Script
-
-```bash
-# Run all tests
-python run_tests.py
-
-# Run only unit tests
-python run_tests.py --type unit
-
-# Run integration tests with coverage
-python run_tests.py --type integration --coverage
-
-# Run API tests with verbose output
-python run_tests.py --type api --verbose
-
-# Skip slow tests
-python run_tests.py --fast
-
-# Show available test markers
-python run_tests.py --markers
-```
-
-### Test Markers
-
-The test suite uses pytest markers to categorize tests:
-
-- `@pytest.mark.unit` - Unit tests
-- `@pytest.mark.integration` - Integration tests  
-- `@pytest.mark.slow` - Tests that take longer to run
-- `@pytest.mark.asyncio` - Async tests
-
-```bash
-# Run only unit tests
-uv run pytest -m unit
-
-# Run only integration tests
-uv run pytest -m integration
-
-# Skip slow tests
-uv run pytest -m "not slow"
-
-# Run async tests only
-uv run pytest -m asyncio
-```
+- **Change Detection Workflow**: End-to-end testing from config to output
+- **Multiple Sites**: Testing detection across multiple configured sites
+- **Error Handling**: Testing system behavior under failure conditions
 
 ## Test Configuration
 
-### pytest Configuration (`pyproject.toml`)
+### Fixtures
 
-```toml
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-asyncio_mode = "auto"
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "--cov=app",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
-]
-```
+The `conftest.py` file provides shared fixtures:
 
-### Coverage Configuration
+- `test_config`: Sample configuration data
+- `temp_config_file`: Temporary YAML configuration file
+- `temp_output_dir`: Temporary output directory
+- `client`: FastAPI test client
+- `mock_*`: Various mock objects for testing
 
-- **Source**: `app/` directory
-- **Reports**: Terminal, HTML, and XML formats
-- **Exclusions**: Test files, migrations, cache directories
+### Environment Setup
 
-## Shared Fixtures
+Tests automatically set up a test environment:
 
-### Core Fixtures (`conftest.py`)
+- Sets `TESTING=true` environment variable
+- Uses temporary files and directories
+- Mocks external dependencies (HTTP requests, file system)
 
-- `test_config` - Test configuration settings
-- `temp_output_dir` - Temporary output directory
-- `mock_sitemap_xml` - Sample sitemap XML
-- `mock_sitemap_index_xml` - Sample sitemap index XML
-- `mock_aiohttp_session` - Mocked aiohttp session
-- `mock_firecrawl_app` - Mocked Firecrawl app
-- `sample_site_config` - Sample site configuration
-- `sample_change_result` - Sample change detection result
+## Writing New Tests
 
-### Usage Example
+### Unit Test Example
 
 ```python
-def test_with_fixtures(sample_site_config, mock_sitemap_xml):
-    """Test using shared fixtures."""
-    assert sample_site_config["name"] == "Test Site"
-    assert "urlset" in mock_sitemap_xml
-```
-
-## Mocking Strategy
-
-### HTTP Requests
-- **Tool**: `aioresponses` for async HTTP mocking
-- **Scope**: All external HTTP calls
-- **Benefits**: Fast, reliable, no network dependencies
-
-### External Services
-- **Tool**: `unittest.mock` and `pytest-mock`
-- **Scope**: Firecrawl API, file system operations
-- **Benefits**: Controlled test environment
-
-### Example Mocking
-
-```python
-@patch('aiohttp.ClientSession.get')
-async def test_http_request(mock_get):
-    mock_response = MagicMock()
-    mock_response.status = 200
-    mock_response.text = asyncio.coroutine(lambda: "<xml>...</xml>")
-    mock_get.return_value.__aenter__.return_value = mock_response
+def test_site_config_initialization():
+    """Test SiteConfig initialization with basic parameters."""
+    config = SiteConfig(
+        name="Test Site",
+        url="https://test.example.com/",
+        sitemap_url="https://test.example.com/sitemap.xml"
+    )
     
-    # Test code here
+    assert config.name == "Test Site"
+    assert config.url == "https://test.example.com/"
+    assert config.detection_methods == ["sitemap"]
 ```
 
-## Best Practices
+### API Test Example
 
-### Test Organization
-- Group related tests in classes
-- Use descriptive test names
-- Follow AAA pattern (Arrange, Act, Assert)
+```python
+def test_health_endpoint(client):
+    """Test the health check endpoint."""
+    response = client.get("/health")
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert "status" in data
+    assert data["status"] in ["healthy", "initializing"]
+```
 
-### Async Testing
-- Use `@pytest.mark.asyncio` for async tests
-- Mock async dependencies properly
-- Handle async context managers
+### Integration Test Example
 
-### Error Testing
-- Test both success and failure scenarios
-- Verify error messages and status codes
-- Test edge cases and boundary conditions
+```python
+@pytest.mark.asyncio
+async def test_complete_workflow(temp_config_file, temp_output_dir):
+    """Test the complete change detection workflow."""
+    config_manager = ConfigManager(temp_config_file)
+    json_writer = JSONWriter(temp_output_dir)
+    
+    # Test implementation...
+    assert result.detection_method == "sitemap"
+    assert len(result.changes) == 2
+```
 
-### Performance
-- Keep unit tests fast (< 100ms each)
-- Use appropriate markers for slow tests
-- Mock expensive operations
+## Test Best Practices
+
+1. **Use Descriptive Names**: Test function names should clearly describe what is being tested
+2. **Arrange-Act-Assert**: Structure tests with clear setup, execution, and verification phases
+3. **Mock External Dependencies**: Avoid making real HTTP requests or file system operations
+4. **Test Edge Cases**: Include tests for error conditions and boundary values
+5. **Keep Tests Independent**: Each test should be able to run in isolation
+6. **Use Fixtures**: Leverage pytest fixtures for common setup and teardown
+
+## Coverage Goals
+
+The test suite aims for comprehensive coverage:
+
+- **Unit Tests**: 90%+ coverage of core business logic
+- **API Tests**: 100% coverage of all endpoints
+- **Integration Tests**: Key workflow scenarios and error conditions
 
 ## Continuous Integration
 
-### GitHub Actions Example
+Tests are automatically run in CI/CD pipelines:
 
-```yaml
-name: Tests
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-      - run: |
-          pip install uv
-          uv sync --extra test
-          uv run pytest --cov=app --cov-report=xml
-      - uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.xml
-```
+- All tests must pass before deployment
+- Coverage reports are generated and tracked
+- Performance benchmarks are monitored
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Import Errors**: Ensure `app/` is in Python path
-2. **Async Test Failures**: Check `@pytest.mark.asyncio` decorators
-3. **Mock Issues**: Verify mock setup and teardown
-4. **Coverage Issues**: Check source paths in coverage config
+1. **Import Errors**: Ensure the app module is in your Python path
+2. **Async Test Failures**: Use `@pytest.mark.asyncio` for async tests
+3. **Mock Issues**: Verify mock objects are properly configured
+4. **File Permission Errors**: Tests use temporary directories to avoid permission issues
 
 ### Debug Mode
 
+Run tests with debug output:
+
 ```bash
-# Run with debug output
-uv run pytest -v -s --tb=long
-
-# Run single test with debug
-uv run pytest tests/unit/test_config.py::test_config_manager_initialization -v -s
+pytest -s -v --tb=long
 ```
 
-## Adding New Tests
-
-### Unit Test Template
-
-```python
-import pytest
-from unittest.mock import patch, MagicMock
-
-from app.module import ClassToTest
-
-class TestClassToTest:
-    """Test cases for ClassToTest."""
-    
-    def test_method_name(self):
-        """Test description."""
-        # Arrange
-        instance = ClassToTest()
-        
-        # Act
-        result = instance.method()
-        
-        # Assert
-        assert result == expected_value
-```
-
-### Integration Test Template
-
-```python
-import pytest
-from unittest.mock import patch
-
-class TestFeatureIntegration:
-    """Integration tests for feature."""
-    
-    @pytest.mark.integration
-    @pytest.mark.asyncio
-    async def test_feature_workflow(self, mock_dependency):
-        """Test complete feature workflow."""
-        # Test implementation
-        pass
-```
-
-### API Test Template
-
-```python
-import pytest
-from fastapi.testclient import TestClient
-
-class TestAPIEndpoint:
-    """API tests for endpoint."""
-    
-    def test_endpoint_success(self, client, mock_service):
-        """Test successful API call."""
-        response = client.get("/api/endpoint")
-        assert response.status_code == 200
-```
-
-## Coverage Goals
-
-- **Unit Tests**: > 90% line coverage
-- **Integration Tests**: > 80% line coverage
-- **API Tests**: > 95% endpoint coverage
-- **Overall**: > 85% total coverage
-
-## Performance Benchmarks
-
-- **Unit Tests**: < 5 seconds total
-- **Integration Tests**: < 30 seconds total
-- **API Tests**: < 10 seconds total
-- **Full Suite**: < 45 seconds total 
+This will show:
+- Detailed test output
+- Full tracebacks on failures
+- Print statements and logging 
