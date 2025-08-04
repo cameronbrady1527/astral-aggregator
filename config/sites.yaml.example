@@ -20,10 +20,26 @@ sites:
     # Content detection settings
     enable_content_detection: true
     content_check_interval: 24  # Check content every 24 hours
-    max_content_pages: 20  # Check content of top 20 pages
+    max_content_pages: 0  # 0 = no limit, check all pages for 100% coverage
     content_timeout: 10  # 10 second timeout per page
     content_selectors: ['main', 'article', '.content', '#content', '.main-content']
     exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
+    # Ultra-fast optimization settings (Phase 1) - Optimized for success rate
+    max_concurrent_requests: 50   # Conservative concurrency for better success rate
+    connection_pool_size: 100     # Connection pool sized for concurrency
+    batch_size: 500               # Process URLs in batches to manage memory
+    ultra_fast_timeout: 8         # Slightly longer timeout for reliability
+    # Adaptive rate limiting settings
+    adaptive_rate_limiting: true  # Enable adaptive concurrency adjustment
+    min_concurrent_requests: 10   # Minimum concurrency level
+    success_rate_threshold: 0.95  # Target 95% success rate
+    rate_adjustment_factor: 0.8   # Reduce concurrency by 20% on failure
+    rate_increase_factor: 1.1     # Increase concurrency by 10% on success
+    # Progressive concurrency ramping
+    progressive_ramping: true     # Start with low concurrency and ramp up
+    ramp_start_concurrency: 5     # Start with 5 concurrent requests
+    ramp_target_concurrency: 50   # Target 50 concurrent requests
+    ramp_batch_size: 20           # Process 20 URLs per ramp step
 
   waverley_gov:
     name: 'Waverley Borough Council'
@@ -36,6 +52,29 @@ sites:
     verify_deleted_urls: true
     max_concurrent_checks: 5
     verification_timeout: 10
+    # Content detection settings
+    enable_content_detection: true
+    content_check_interval: 24
+    max_content_pages: 0  # 0 = no limit, check all pages
+    content_timeout: 10
+    content_selectors: ['main', 'article', '.content', '#content', '.main-content']
+    exclude_selectors: ['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu']
+    # Ultra-fast optimization settings - Optimized for success rate
+    max_concurrent_requests: 50
+    connection_pool_size: 100
+    batch_size: 500
+    ultra_fast_timeout: 8
+    # Adaptive rate limiting settings
+    adaptive_rate_limiting: true
+    min_concurrent_requests: 10
+    success_rate_threshold: 0.95
+    rate_adjustment_factor: 0.8
+    rate_increase_factor: 1.1
+    # Progressive concurrency ramping
+    progressive_ramping: true
+    ramp_start_concurrency: 5
+    ramp_target_concurrency: 50
+    ramp_batch_size: 20
 
 firecrawl:
   api_key: ${FIRECRAWL_API_KEY}  # Set this environment variable

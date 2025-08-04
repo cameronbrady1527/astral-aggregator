@@ -39,8 +39,42 @@ class ContentDetector(BaseDetector):
         self.exclude_selectors = getattr(site_config, 'exclude_selectors', [
             'nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu'
         ])
-        self.max_pages = getattr(site_config, 'max_content_pages', 10)
+        self.max_pages = getattr(site_config, 'max_content_pages', 0)  # 0 = no limit
         self.timeout = getattr(site_config, 'content_timeout', 10)
+        
+        # Ultra-fast optimization settings with adaptive rate limiting
+        self.max_concurrent = getattr(site_config, 'max_concurrent_requests', 50)
+        self.connection_pool_size = getattr(site_config, 'connection_pool_size', 100)
+        self.batch_size = getattr(site_config, 'batch_size', 500)
+        self.ultra_fast_timeout = getattr(site_config, 'ultra_fast_timeout', 8)
+        
+        # Adaptive rate limiting settings
+        self.adaptive_enabled = getattr(site_config, 'adaptive_rate_limiting', True)
+        self.min_concurrent = getattr(site_config, 'min_concurrent_requests', 10)
+        self.max_concurrent_adaptive = getattr(site_config, 'max_concurrent_requests', 200)
+        self.success_rate_threshold = getattr(site_config, 'success_rate_threshold', 0.95)  # 95%
+        self.rate_adjustment_factor = getattr(site_config, 'rate_adjustment_factor', 0.8)  # Reduce by 20% on failure
+        self.rate_increase_factor = getattr(site_config, 'rate_increase_factor', 1.1)  # Increase by 10% on success
+        
+        # Progressive concurrency ramping
+        self.progressive_ramping = getattr(site_config, 'progressive_ramping', True)
+        self.ramp_start_concurrency = getattr(site_config, 'ramp_start_concurrency', 5)
+        self.ramp_target_concurrency = getattr(site_config, 'ramp_target_concurrency', 50)
+        self.ramp_batch_size = getattr(site_config, 'ramp_batch_size', 20)  # URLs per ramp step
+        
+        # Server health monitoring
+        self.server_health = {
+            'current_concurrency': self.max_concurrent,
+            'success_rate': 1.0,
+            'response_times': [],
+            'error_count': 0,
+            'success_count': 0,
+            'last_adjustment': datetime.now()
+        }
+        
+        # Session management for connection pooling
+        self._session = None
+        self._connector = None
     
     async def get_current_state(self) -> Dict[str, Any]:
         """Get the current state by fetching and hashing content from key pages."""
@@ -54,8 +88,8 @@ class ContentDetector(BaseDetector):
             else:
                 key_urls = sitemap_urls  # Check all pages
             
-            # Fetch and hash content
-            content_hashes = await self._fetch_content_hashes(key_urls)
+            # Fetch and hash content with ultra-fast optimization
+            content_hashes = await self._fetch_content_hashes_ultra_fast(key_urls)
             
             return {
                 "detection_method": "content_hash",
@@ -144,107 +178,395 @@ class ContentDetector(BaseDetector):
             # Fallback to main page
             return [self.site_url]
     
-    async def _fetch_content_hashes(self, urls: List[str]) -> Dict[str, Dict[str, Any]]:
-        """Fetch content hashes for the given URLs."""
+    async def _create_ultra_fast_session(self) -> aiohttp.ClientSession:
+        """Create an optimized session with massive connection pooling."""
+        if self._connector is None:
+            self._connector = aiohttp.TCPConnector(
+                limit=self.connection_pool_size,
+                limit_per_host=self.connection_pool_size,
+                ttl_dns_cache=300,
+                use_dns_cache=True,
+                keepalive_timeout=30,
+                enable_cleanup_closed=True
+            )
+        
+        if self._session is None:
+            timeout = aiohttp.ClientTimeout(
+                total=self.ultra_fast_timeout,
+                connect=2,
+                sock_read=3
+            )
+            
+            self._session = aiohttp.ClientSession(
+                connector=self._connector,
+                timeout=timeout,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (compatible; ContentDetector/1.0)',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive',
+                }
+            )
+        
+        return self._session
+    
+    async def _fetch_content_hashes_ultra_fast(self, urls: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Fetch content hashes with ultra-fast optimization and adaptive rate limiting."""
+        if not urls:
+            return {}
+        
+        print(f"Starting ultra-fast content hash fetching for {len(urls)} URLs...")
+        start_time = datetime.now()
+        
         content_hashes = {}
         successful_fetches = 0
         failed_fetches = 0
         
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
-            tasks = []
-            for url in urls:
-                task = self._fetch_single_content_hash(session, url)
-                tasks.append(task)
-            
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            for i, result in enumerate(results):
-                if isinstance(result, tuple) and len(result) == 2:
-                    url, content_hash = result
-                    if content_hash:
-                        # Store as dictionary with hash and metadata
-                        content_hashes[url] = {
-                            "hash": content_hash,
-                            "fetched_at": datetime.now().isoformat(),
-                            "status": "success"
-                        }
-                        successful_fetches += 1
+        # Create optimized session
+        session = await self._create_ultra_fast_session()
+        
+        try:
+            # Process URLs with progressive ramping if enabled
+            if self.progressive_ramping and len(urls) > self.ramp_batch_size:
+                content_hashes = await self._fetch_with_progressive_ramping(session, urls)
+            else:
+                # Process URLs in batches to manage memory
+                for i in range(0, len(urls), self.batch_size):
+                    batch_urls = urls[i:i + self.batch_size]
+                    batch_start = datetime.now()
+                    
+                    print(f"Processing batch {i//self.batch_size + 1}/{(len(urls) + self.batch_size - 1)//self.batch_size} ({len(batch_urls)} URLs)")
+                    print(f"Current concurrency: {self.server_health['current_concurrency']} (adaptive: {self.adaptive_enabled})")
+                    
+                    # Use adaptive concurrency if enabled
+                    current_concurrency = self.server_health['current_concurrency'] if self.adaptive_enabled else self.max_concurrent
+                    
+                    # Create semaphore to limit concurrent requests
+                    semaphore = asyncio.Semaphore(current_concurrency)
+                    
+                    # Create tasks for this batch
+                    tasks = []
+                    for url in batch_urls:
+                        task = self._fetch_single_ultra_fast(session, url, semaphore)
+                        tasks.append(task)
+                    
+                    # Execute batch with adaptive concurrency
+                    batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Process batch results and update server health
+                batch_successful = 0
+                batch_failed = 0
+                
+                for j, result in enumerate(batch_results):
+                    url = batch_urls[j]
+                    if isinstance(result, tuple) and len(result) == 2:
+                        url, content_hash = result
+                        if content_hash:
+                            content_hashes[url] = {
+                                "hash": content_hash,
+                                "fetched_at": datetime.now().isoformat(),
+                                "status": "success"
+                            }
+                            successful_fetches += 1
+                            batch_successful += 1
+                            self.server_health['success_count'] += 1
+                        else:
+                            failed_fetches += 1
+                            batch_failed += 1
+                            self.server_health['error_count'] += 1
                     else:
                         failed_fetches += 1
-                else:
-                    failed_fetches += 1
-                    print(f"Warning: Failed to fetch content for {urls[i]}: {result}")
+                        batch_failed += 1
+                        self.server_health['error_count'] += 1
+                
+                # Update server health and adjust concurrency if adaptive mode is enabled
+                if self.adaptive_enabled:
+                    self._update_server_health(batch_successful, batch_failed, batch_start)
+                    self._adjust_concurrency()
+                
+                batch_time = (datetime.now() - batch_start).total_seconds()
+                print(f"Batch completed in {batch_time:.2f}s - Success: {batch_successful}, Failed: {batch_failed}")
+                if self.adaptive_enabled:
+                    print(f"Server health - Success rate: {self.server_health['success_rate']:.1%}, Concurrency: {self.server_health['current_concurrency']}")
         
-        print(f"📊 Content hash fetching summary:")
-        print(f"   ✅ Successful: {successful_fetches}")
-        print(f"   ❌ Failed: {failed_fetches}")
-        print(f"   📈 Success rate: {(successful_fetches / len(urls) * 100):.1f}%")
+        finally:
+            # Don't close session here - keep it for reuse
+            pass
+        
+        total_time = (datetime.now() - start_time).total_seconds()
+        success_rate = (successful_fetches / len(urls) * 100) if urls else 0
+        
+        print(f"Ultra-fast content hash fetching completed:")
+        print(f"   Total time: {total_time:.2f}s")
+        print(f"   URLs processed: {len(urls)}")
+        print(f"   Successful: {successful_fetches}")
+        print(f"   Failed: {failed_fetches}")
+        print(f"   Success rate: {success_rate:.1f}%")
+        print(f"   Speed: {len(urls)/total_time:.1f} URLs/second")
+        if self.adaptive_enabled:
+            print(f"   Final concurrency: {self.server_health['current_concurrency']}")
         
         return content_hashes
     
-    async def _fetch_single_content_hash(self, session: aiohttp.ClientSession, url: str) -> tuple[str, Optional[str]]:
-        """Fetch and hash content for a single URL."""
-        try:
-            async with session.get(url) as response:
-                if response.status != 200:
+    async def _fetch_single_ultra_fast(self, session: aiohttp.ClientSession, url: str, semaphore: asyncio.Semaphore) -> tuple[str, Optional[str]]:
+        """Fetch and hash content for a single URL with ultra-fast optimization and intelligent retries."""
+        async with semaphore:
+            max_retries = 3
+            base_delay = 0.1  # Start with 100ms delay
+            
+            for attempt in range(max_retries):
+                try:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            content = await response.text()
+                            
+                            # Extract main content using optimized method
+                            main_content = self._extract_main_content_ultra_fast(content)
+                            
+                            if main_content:
+                                # Create hash of the content
+                                content_hash = hashlib.md5(main_content.encode('utf-8')).hexdigest()
+                                return url, content_hash
+                            else:
+                                return url, None
+                        elif response.status == 429:  # Rate limited
+                            # Wait longer for rate limiting
+                            await asyncio.sleep(base_delay * (2 ** attempt) * 2)
+                            continue
+                        elif response.status >= 500:  # Server error
+                            # Wait with exponential backoff
+                            await asyncio.sleep(base_delay * (2 ** attempt))
+                            continue
+                        else:
+                            # Client error (404, 403, etc.) - don't retry
+                            return url, None
+                            
+                except asyncio.TimeoutError:
+                    # Timeout - retry with exponential backoff
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(base_delay * (2 ** attempt))
+                        continue
                     return url, None
-                
-                content = await response.text()
-                
-                # Extract main content using selectors
-                main_content = self._extract_main_content(content)
-                
-                if main_content:
-                    # Create hash of the content
-                    content_hash = hashlib.md5(main_content.encode('utf-8')).hexdigest()
-                    return url, content_hash
-                else:
+                except Exception as e:
+                    # Other exceptions - retry with exponential backoff
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(base_delay * (2 ** attempt))
+                        continue
                     return url, None
-                    
-        except Exception as e:
-            print(f"Error fetching content from {url}: {e}")
+            
             return url, None
     
-    def _extract_main_content(self, html_content: str) -> Optional[str]:
-        """Extract main content from HTML using CSS selectors."""
+    def _extract_main_content_ultra_fast(self, html_content: str) -> Optional[str]:
+        """Extract main content using ultra-fast regex-based method."""
         try:
-            soup = BeautifulSoup(html_content, 'html.parser')
+            # Remove script and style tags first
+            html_content = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+            html_content = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
             
-            # Remove unwanted elements first
-            for selector in self.exclude_selectors:
-                for element in soup.select(selector):
-                    element.decompose()
-            
-            # Try to find main content using selectors
+            # Try to find main content using regex patterns for common selectors
             main_content = None
+            
+            # Look for main content areas using regex
             for selector in self.content_selectors:
-                elements = soup.select(selector)
-                if elements:
-                    # Use the first matching element
-                    main_content = elements[0]
+                if selector.startswith('.'):
+                    # Class selector
+                    pattern = rf'<[^>]*class="[^"]*{selector[1:]}[^"]*"[^>]*>(.*?)</[^>]*>'
+                elif selector.startswith('#'):
+                    # ID selector
+                    pattern = rf'<[^>]*id="{selector[1:]}"[^>]*>(.*?)</[^>]*>'
+                else:
+                    # Tag selector
+                    pattern = rf'<{selector}[^>]*>(.*?)</{selector}>'
+                
+                matches = re.findall(pattern, html_content, flags=re.DOTALL | re.IGNORECASE)
+                if matches:
+                    main_content = matches[0]
                     break
             
             if not main_content:
                 # Fallback to body content
-                main_content = soup.find('body')
+                body_match = re.search(r'<body[^>]*>(.*?)</body>', html_content, flags=re.DOTALL | re.IGNORECASE)
+                if body_match:
+                    main_content = body_match.group(1)
             
             if main_content:
-                # Clean up the content
-                text = self._clean_text(main_content.get_text())
+                # Clean up the content using regex
+                text = self._clean_text_ultra_fast(main_content)
                 return text if text.strip() else None
             
             return None
             
         except Exception as e:
-            print(f"Error extracting content: {e}")
             return None
     
-    def _clean_text(self, text: str) -> str:
-        """Clean and normalize text content."""
+    def _clean_text_ultra_fast(self, text: str) -> str:
+        """Clean and normalize text content using ultra-fast regex."""
+        # Remove HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
         # Remove extra whitespace
         text = re.sub(r'\s+', ' ', text)
         # Remove leading/trailing whitespace
         text = text.strip()
         # Normalize line breaks
         text = re.sub(r'\n+', '\n', text)
-        return text 
+        return text
+    
+    # Keep the original methods for backward compatibility
+    async def _fetch_content_hashes(self, urls: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Fetch content hashes for the given URLs (legacy method)."""
+        return await self._fetch_content_hashes_ultra_fast(urls)
+    
+    async def _fetch_single_content_hash(self, session: aiohttp.ClientSession, url: str) -> tuple[str, Optional[str]]:
+        """Fetch and hash content for a single URL (legacy method)."""
+        semaphore = asyncio.Semaphore(self.max_concurrent)
+        return await self._fetch_single_ultra_fast(session, url, semaphore)
+    
+    def _extract_main_content(self, html_content: str) -> Optional[str]:
+        """Extract main content from HTML using CSS selectors (legacy method)."""
+        return self._extract_main_content_ultra_fast(html_content)
+    
+    def _clean_text(self, text: str) -> str:
+        """Clean and normalize text content (legacy method)."""
+        return self._clean_text_ultra_fast(text)
+    
+    def _update_server_health(self, successful: int, failed: int, batch_start: datetime):
+        """Update server health metrics based on batch results."""
+        total_requests = successful + failed
+        if total_requests == 0:
+            return
+        
+        # Calculate batch success rate
+        batch_success_rate = successful / total_requests
+        
+        # Update rolling success rate (weighted average)
+        current_success_rate = self.server_health['success_rate']
+        # Weight recent results more heavily
+        self.server_health['success_rate'] = (current_success_rate * 0.7) + (batch_success_rate * 0.3)
+        
+        # Update response time tracking
+        batch_time = (datetime.now() - batch_start).total_seconds()
+        avg_response_time = batch_time / total_requests
+        self.server_health['response_times'].append(avg_response_time)
+        
+        # Keep only last 10 response times
+        if len(self.server_health['response_times']) > 10:
+            self.server_health['response_times'] = self.server_health['response_times'][-10:]
+    
+    async def _fetch_with_progressive_ramping(self, session: aiohttp.ClientSession, urls: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Fetch content hashes with progressive concurrency ramping."""
+        print(f"Starting progressive ramping from {self.ramp_start_concurrency} to {self.ramp_target_concurrency} concurrent requests")
+        
+        content_hashes = {}
+        current_concurrency = self.ramp_start_concurrency
+        
+        # Process URLs in small batches with increasing concurrency
+        for i in range(0, len(urls), self.ramp_batch_size):
+            batch_urls = urls[i:i + self.ramp_batch_size]
+            batch_start = datetime.now()
+            
+            print(f"Ramp step {i//self.ramp_batch_size + 1} - Concurrency: {current_concurrency} ({len(batch_urls)} URLs)")
+            
+            # Create semaphore for current concurrency level
+            semaphore = asyncio.Semaphore(current_concurrency)
+            
+            # Create tasks for this batch
+            tasks = []
+            for url in batch_urls:
+                task = self._fetch_single_ultra_fast(session, url, semaphore)
+                tasks.append(task)
+            
+            # Execute batch
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process batch results
+            batch_successful = 0
+            batch_failed = 0
+            
+            for j, result in enumerate(batch_results):
+                url = batch_urls[j]
+                if isinstance(result, tuple) and len(result) == 2:
+                    url, content_hash = result
+                    if content_hash:
+                        content_hashes[url] = {
+                            "hash": content_hash,
+                            "fetched_at": datetime.now().isoformat(),
+                            "status": "success"
+                        }
+                        batch_successful += 1
+                    else:
+                        batch_failed += 1
+                else:
+                    batch_failed += 1
+            
+            # Update server health
+            if self.adaptive_enabled:
+                self._update_server_health(batch_successful, batch_failed, batch_start)
+            
+            # Calculate success rate for this batch
+            batch_success_rate = batch_successful / len(batch_urls) if batch_urls else 0
+            
+            # Adjust concurrency for next batch
+            if batch_success_rate >= 0.95:  # 95% success rate
+                # Increase concurrency
+                current_concurrency = min(
+                    self.ramp_target_concurrency,
+                    int(current_concurrency * 1.5)  # Increase by 50%
+                )
+                print(f"  ✅ Success rate: {batch_success_rate:.1%} - Increasing concurrency to {current_concurrency}")
+            elif batch_success_rate < 0.80:  # Below 80% success rate
+                # Decrease concurrency
+                current_concurrency = max(
+                    self.ramp_start_concurrency,
+                    int(current_concurrency * 0.7)  # Decrease by 30%
+                )
+                print(f"  ⚠️  Success rate: {batch_success_rate:.1%} - Decreasing concurrency to {current_concurrency}")
+            else:
+                print(f"  ➡️  Success rate: {batch_success_rate:.1%} - Maintaining concurrency at {current_concurrency}")
+            
+            batch_time = (datetime.now() - batch_start).total_seconds()
+            print(f"  Batch completed in {batch_time:.2f}s - Success: {batch_successful}, Failed: {batch_failed}")
+            
+            # Small delay between ramp steps to let server stabilize
+            if i + self.ramp_batch_size < len(urls):
+                await asyncio.sleep(0.5)
+        
+        return content_hashes
+    
+    def _adjust_concurrency(self):
+        """Dynamically adjust concurrency based on server health."""
+        success_rate = self.server_health['success_rate']
+        current_concurrency = self.server_health['current_concurrency']
+        
+        # If success rate is below threshold, reduce concurrency
+        if success_rate < self.success_rate_threshold:
+            new_concurrency = max(
+                self.min_concurrent,
+                int(current_concurrency * self.rate_adjustment_factor)
+            )
+            if new_concurrency != current_concurrency:
+                print(f"Reducing concurrency from {current_concurrency} to {new_concurrency} (success rate: {success_rate:.1%})")
+                self.server_health['current_concurrency'] = new_concurrency
+                self.server_health['last_adjustment'] = datetime.now()
+        
+        # If success rate is high and we haven't adjusted recently, try increasing
+        elif success_rate > 0.98 and current_concurrency < self.max_concurrent_adaptive:
+            time_since_adjustment = (datetime.now() - self.server_health['last_adjustment']).total_seconds()
+            if time_since_adjustment > 30:  # Wait at least 30 seconds between increases
+                new_concurrency = min(
+                    self.max_concurrent_adaptive,
+                    int(current_concurrency * self.rate_increase_factor)
+                )
+                if new_concurrency != current_concurrency:
+                    print(f"Increasing concurrency from {current_concurrency} to {new_concurrency} (success rate: {success_rate:.1%})")
+                    self.server_health['current_concurrency'] = new_concurrency
+                    self.server_health['last_adjustment'] = datetime.now()
+    
+    async def close(self):
+        """Close the session and connector."""
+        if self._session:
+            await self._session.close()
+            self._session = None
+        if self._connector:
+            await self._connector.close()
+            self._connector = None 
