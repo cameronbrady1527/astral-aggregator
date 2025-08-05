@@ -40,6 +40,14 @@ class ContentDetector(BaseDetector):
     """
     Content-based change detector that fetches and hashes page content.
     Optimized for ultra-fast performance with 100% accuracy guarantee.
+    
+    Rate Limiting Behavior:
+    - Stops immediately when severe rate limiting is detected (< 10% success rate)
+    - Stops after 3 consecutive blocking events (reduced from 5)
+    - Stops when rate-limit success rate is < 30% for 3+ consecutive failures
+    - Stops when overall success rate is < 20% for 2+ consecutive failures
+    - Stops immediately when 429 errors occur during sitemap fetching
+    - Prevents persistent retrying that could worsen rate limiting situations
     """
     
     def __init__(self, site_config: Any):
@@ -99,26 +107,36 @@ class ContentDetector(BaseDetector):
             'Mozilla/5.0 (compatible; ContentDetector/1.0; +https://github.com/astral/aggregator)'
         ]
         
-        # Server health monitoring
-        self.server_health = {
-            'current_concurrency': self.max_concurrent,
-            'success_rate': 1.0,
-            'response_times': [],
-            'error_count': 0,
-            'success_count': 0,
-            'last_adjustment': datetime.now()
-        }
-        
-        # Session management for connection pooling
+        # Initialize session management
         self._session = None
         self._connector = None
-        self._current_user_agent = None
-        self._request_count = 0
-        self._session_creation_time = None
-        
-        # SSL and connection management
         self._ssl_context = None
-        self._connection_cleanup_task = None
+        self._current_user_agent = None
+        self._session_creation_time = None
+        self._request_count = 0
+        self._session_lock = asyncio.Lock()  # Add lock for thread-safe session management
+        
+        # Rate limiting state
+        self._rate_limit_backoff = 0
+        self._consecutive_429s = 0
+        self._last_429_time = None
+        
+        # Server health tracking
+        self.server_health = {
+            'current_concurrency': self.min_concurrent,
+            'success_rate': 1.0,
+            'last_adjustment': datetime.now(),
+            'total_requests': 0,
+            'successful_requests': 0,
+            'failed_requests': 0
+        }
+        
+        # Progress tracking
+        self.progress_file = None
+        self._cleanup_old_progress_files(getattr(site_config, 'name', 'unknown'))
+        
+        # Rate limiting tracking
+        self._stopped_due_to_rate_limiting = False
 
     def _guess_sitemap_url(self) -> str:
         """Guess the sitemap URL if not provided."""
@@ -128,6 +146,8 @@ class ContentDetector(BaseDetector):
 
     async def get_current_state(self) -> Dict[str, Any]:
         """Get the current state by fetching and hashing content from key pages."""
+        # Reset rate limiting flag at the start of each run
+        self._stopped_due_to_rate_limiting = False
         try:
             # Get URLs from sitemap first
             sitemap_urls = await self._get_sitemap_urls()
@@ -143,6 +163,22 @@ class ContentDetector(BaseDetector):
             
             # Fetch and hash content with ultra-fast optimization
             content_hashes = await self._fetch_content_hashes_ultra_fast(key_urls)
+            
+            # Check if we stopped due to severe rate limiting
+            if self._stopped_due_to_rate_limiting:
+                logger.warning(f"Content extraction stopped due to severe rate limiting for {self.site_name}")
+                logger.info(f"Progress preserved: {len(content_hashes)} URLs with content hashes from previous runs")
+                return {
+                    "detection_method": "content_hash",
+                    "site_url": self.site_url,
+                    "error": "Severe rate limiting detected - process stopped to avoid further issues",
+                    "rate_limited": True,
+                    "urls_checked": key_urls,
+                    "content_hashes": content_hashes,  # Keep partial data for debugging
+                    "total_pages": len(content_hashes),
+                    "captured_at": datetime.now().isoformat(),
+                    "note": f"Content hashes from {len(content_hashes)} URLs from previous successful runs are preserved"
+                }
             
             return {
                 "detection_method": "content_hash",
@@ -170,6 +206,22 @@ class ContentDetector(BaseDetector):
         
         try:
             current_state = await self.get_current_state()
+            
+            # Check if we were rate limited during content fetching
+            if current_state.get("rate_limited", False):
+                logger.warning(f"Rate limiting detected during content fetching for {self.site_name} - skipping change detection")
+                result.metadata.update({
+                    "message": "Change detection skipped due to rate limiting",
+                    "rate_limited": True,
+                    "error": "Severe rate limiting detected - change detection skipped to avoid false reports",
+                    "pages_checked": 0,
+                    "baseline_pages": len(previous_baseline.get("content_hashes", {})) if previous_baseline else 0,
+                    "changed_pages": 0,
+                    "new_pages": 0,
+                    "deleted_pages": 0,
+                    "accuracy": "0%"
+                })
+                return result
             
             if previous_baseline is None:
                 result.metadata["message"] = "First run - establishing content baseline"
@@ -242,7 +294,12 @@ class ContentDetector(BaseDetector):
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(self.sitemap_url, timeout=30) as response:
-                    if response.status != 200:
+                    if response.status == 429:
+                        print(f"🛑 RATE LIMITED DURING SITEMAP FETCHING - Status 429")
+                        print(f"⏰ Please wait approximately 10 minutes before running the crawler again.")
+                        print(f"📊 The site is actively rate limiting our sitemap requests.")
+                        raise Exception(f"Rate limited during sitemap fetching: 429")
+                    elif response.status != 200:
                         raise Exception(f"Failed to fetch sitemap: {response.status}")
                     
                     content = await response.text()
@@ -255,9 +312,17 @@ class ContentDetector(BaseDetector):
                         return self._parse_sitemap_urls(content)
                         
         except Exception as e:
-            logger.warning(f"Warning: Could not get sitemap URLs: {e}")
-            # Fallback to main page
-            return [self.site_url]
+            if "429" in str(e) or "Rate limited" in str(e):
+                logger.error(f"🛑 STOPPING: Rate limited during sitemap fetching: {e}")
+                print(f"🛑 STOPPING: Rate limited during sitemap fetching")
+                print(f"⏰ Please wait approximately 10 minutes before running the crawler again.")
+                print(f"📊 The site is actively blocking our sitemap requests.")
+                # Re-raise to stop the entire process
+                raise
+            else:
+                logger.warning(f"Warning: Could not get sitemap URLs: {e}")
+                # Fallback to main page for non-rate-limit errors
+                return [self.site_url]
 
     def _is_sitemap_index(self, content: str) -> bool:
         """Check if the XML content is a sitemap index."""
@@ -333,15 +398,28 @@ class ContentDetector(BaseDetector):
         """Fetch and parse an individual sitemap."""
         try:
             async with session.get(sitemap_url, timeout=30) as response:
-                if response.status != 200:
+                if response.status == 429:
+                    print(f"🛑 RATE LIMITED DURING INDIVIDUAL SITEMAP FETCHING - Status 429")
+                    print(f"⏰ Please wait approximately 10 minutes before running the crawler again.")
+                    print(f"📊 The site is actively rate limiting our sitemap requests.")
+                    raise Exception(f"Rate limited during individual sitemap fetching: 429")
+                elif response.status != 200:
                     raise Exception(f"Failed to fetch sitemap {sitemap_url}: {response.status}")
                 
                 content = await response.text()
                 return self._parse_sitemap_urls(content)
                 
         except Exception as e:
-            logger.warning(f"Failed to fetch sitemap {sitemap_url}: {e}")
-            return []
+            if "429" in str(e) or "Rate limited" in str(e):
+                logger.error(f"🛑 STOPPING: Rate limited during individual sitemap fetching: {e}")
+                print(f"🛑 STOPPING: Rate limited during individual sitemap fetching")
+                print(f"⏰ Please wait approximately 10 minutes before running the crawler again.")
+                print(f"📊 The site is actively blocking our sitemap requests.")
+                # Re-raise to stop the entire process
+                raise
+            else:
+                logger.warning(f"Failed to fetch sitemap {sitemap_url}: {e}")
+                return []
 
     def _parse_sitemap_urls(self, content: str) -> List[str]:
         """Parse sitemap XML to extract URLs."""
@@ -377,7 +455,14 @@ class ContentDetector(BaseDetector):
     
     async def _create_ultra_fast_session(self) -> aiohttp.ClientSession:
         """Create an optimized session with massive connection pooling and SSL fixes."""
-        if self._connector is None:
+        async with self._session_lock:
+            # Always create a new connector to avoid closed connector issues
+            if self._connector is not None:
+                try:
+                    await self._connector.close()
+                except Exception:
+                    pass  # Ignore errors when closing old connector
+            
             # Create SSL context with proper settings
             self._ssl_context = ssl.create_default_context()
             self._ssl_context.check_hostname = False
@@ -395,15 +480,21 @@ class ContentDetector(BaseDetector):
                 # SSL shutdown timeout fixes
                 force_close=False
             )
-        
-        # Rotate user agent if enabled
-        if self.user_agent_rotation:
-            import random
-            self._current_user_agent = random.choice(self.user_agents)
-        else:
-            self._current_user_agent = 'Mozilla/5.0 (compatible; ContentDetector/1.0)'
-        
-        if self._session is None:
+            
+            # Rotate user agent if enabled
+            if self.user_agent_rotation:
+                import random
+                self._current_user_agent = random.choice(self.user_agents)
+            else:
+                self._current_user_agent = 'Mozilla/5.0 (compatible; ContentDetector/1.0)'
+            
+            # Always create a new session
+            if self._session is not None:
+                try:
+                    await self._session.close()
+                except Exception:
+                    pass  # Ignore errors when closing old session
+            
             timeout = ClientTimeout(
                 total=self.ultra_fast_timeout,
                 connect=2,
@@ -444,8 +535,8 @@ class ContentDetector(BaseDetector):
             # Track session creation time
             self._session_creation_time = datetime.now()
             self._request_count = 0
-        
-        return self._session
+            
+            return self._session
 
     def _should_rotate_session(self) -> bool:
         """Determine if we should rotate the session based on various criteria."""
@@ -467,7 +558,6 @@ class ContentDetector(BaseDetector):
         """Rotate session if needed and return the current session."""
         if self._should_rotate_session():
             print(f"  🔄 Rotating session (requests: {self._request_count}, age: {(datetime.now() - self._session_creation_time).total_seconds():.1f}s)")
-            await self._cleanup_connections()
             return await self._create_ultra_fast_session()
         
         return self._session
@@ -524,9 +614,25 @@ class ContentDetector(BaseDetector):
 
     def _should_stop_trying(self, consecutive_blocking_events: int, current_concurrency: int) -> bool:
         """Determine if we should stop trying due to persistent blocking."""
-        # Stop if we've had too many blocking events (5 or more)
+        # Stop if we've had too many blocking events (3 or more) - more aggressive
         # Don't stop just because concurrency is low - that's normal during backoff
-        return consecutive_blocking_events >= 5
+        return consecutive_blocking_events >= 3
+    
+    def _should_stop_due_to_rate_limiting(self, rate_limit_success_rate: float, overall_success_rate: float, consecutive_failures: int) -> bool:
+        """Determine if we should stop due to severe rate limiting."""
+        # Stop if rate-limit success rate is extremely low (< 10%)
+        if rate_limit_success_rate < 0.1:
+            return True
+        
+        # Stop if overall success rate is very low (< 20%) and we've had multiple failures
+        if overall_success_rate < 0.2 and consecutive_failures >= 2:
+            return True
+        
+        # Stop if rate-limit success rate is low (< 30%) and we've had many failures
+        if rate_limit_success_rate < 0.3 and consecutive_failures >= 3:
+            return True
+        
+        return False
 
     async def _test_url_diagnostics(self, url: str) -> Dict[str, Any]:
         """Test a single URL to diagnose what's happening."""
@@ -650,15 +756,15 @@ class ContentDetector(BaseDetector):
                                 }
                                 successful_fetches += 1
                                 batch_successful += 1
-                                self.server_health['success_count'] += 1
+                                self.server_health['successful_requests'] += 1
                             else:
                                 failed_fetches += 1
                                 batch_failed += 1
-                                self.server_health['error_count'] += 1
+                                self.server_health['failed_requests'] += 1
                         else:
                             failed_fetches += 1
                             batch_failed += 1
-                            self.server_health['error_count'] += 1
+                            self.server_health['failed_requests'] += 1
                     
                     # Update server health for this batch
                     if self.adaptive_enabled:
@@ -696,6 +802,11 @@ class ContentDetector(BaseDetector):
             # Check if we need to rotate session
             session = await self._rotate_session_if_needed()
             
+            # Check if session is valid
+            if session is None:
+                print(f"    💥 Session is None for {url}")
+                return url, None, "session_error"
+            
             max_retries = 3
             base_delay = 0.1  # Start with 100ms delay
             
@@ -719,20 +830,18 @@ class ContentDetector(BaseDetector):
                                 return url, None, "content_extraction_failed"
                         elif response.status == 429:  # Rate limited
                             print(f"    ⚠️  Rate limited (429) for {url}")
-                            # Force session rotation on 429
-                            if self.ip_rotation_enabled:
-                                print(f"    🔄 Forcing session rotation due to 429...")
-                                await self._cleanup_connections()
-                                session = await self._create_ultra_fast_session()
-                            # Immediately return None to signal failure - let batch-level handling deal with it
-                            # This will trigger the rate limiting detection in the progressive ramping
+                            # Update rate limiting state
+                            self._consecutive_429s += 1
+                            self._last_429_time = datetime.now()
+                            
+                            # Don't force session rotation on every 429 - let the batch-level logic handle it
+                            # Just return the failure and let the progressive ramping deal with it
                             return url, None, "rate_limited"
                         elif response.status == 403:  # Forbidden
                             print(f"    🚫 Forbidden (403) for {url}")
                             # Force session rotation on 403 (IP-level blocking)
                             if self.ip_rotation_enabled:
                                 print(f"    🔄 Forcing session rotation due to 403 (IP blocking)...")
-                                await self._cleanup_connections()
                                 session = await self._create_ultra_fast_session()
                             return url, None, "forbidden"
                         elif response.status == 404:  # Not Found
@@ -762,8 +871,11 @@ class ContentDetector(BaseDetector):
                 except aiohttp.ClientConnectionError as e:
                     print(f"    🔌 Connection error for {url}: {str(e)[:50]}...")
                     # Handle SSL shutdown and connection errors specifically
-                    if "SSL shutdown timed out" in str(e) or "Connection lost" in str(e):
+                    if "SSL shutdown timed out" in str(e) or "Connection lost" in str(e) or "Connector is closed" in str(e):
                         if attempt < max_retries - 1:
+                            # Force session rotation on connection errors
+                            print(f"    🔄 Forcing session rotation due to connection error...")
+                            session = await self._create_ultra_fast_session()
                             await asyncio.sleep(base_delay * (2 ** attempt) * 2)  # Longer delay for connection issues
                             continue
                     return url, None, "connection_error"
@@ -861,7 +973,9 @@ class ContentDetector(BaseDetector):
             
             # Update rolling metrics
             self.server_health['success_rate'] = success_rate
-            self.server_health['response_times'].append(response_time)
+            self.server_health['total_requests'] += total
+            self.server_health['successful_requests'] += successful
+            self.server_health['failed_requests'] += failed
             
             # Keep only last 10 response times
             if len(self.server_health['response_times']) > 10:
@@ -1013,19 +1127,25 @@ class ContentDetector(BaseDetector):
                 batch_hashes = await self._fetch_batch_with_concurrency(session, batch_urls, current_concurrency)
                 batch_time = (datetime.now() - batch_start).total_seconds()
                 
-                # Calculate batch success rate
+                # Extract rate-limiting failures (these should affect concurrency)
+                rate_limit_failures = batch_hashes.pop("_rate_limit_failures", 0)
+                total_failures = batch_hashes.pop("_total_failures", 0)
+                
+                # Calculate batch success rate (exclude special keys from batch_hashes)
                 successful = len(batch_hashes)
                 failed = len(batch_urls) - successful
                 batch_success_rate = successful / len(batch_urls) if batch_urls else 0
-                
-                # Extract rate-limiting failures (these should affect concurrency)
-                rate_limit_failures = batch_hashes.pop("_rate_limit_failures", 0)
-                total_failures = batch_hashes.pop("_total_failures", failed)
                 
                 # Calculate rate-limiting success rate (excluding 404s and other client errors)
                 rate_limit_success_rate = (len(batch_urls) - rate_limit_failures) / len(batch_urls) if batch_urls else 0
                 
                 print(f"  Batch completed in {batch_time:.2f}s - Success: {successful}, Failed: {failed}")
+                
+                # Check if we should stop due to severe rate limiting (after we have the success rates)
+                if self._should_stop_due_to_rate_limiting(rate_limit_success_rate, batch_success_rate, consecutive_failures):
+                    print(f"🛑 Stopping due to severe rate limiting (rate-limit: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%}, failures: {consecutive_failures})")
+                    self._stopped_due_to_rate_limiting = True  # Set the flag
+                    break
                 
                 # Update content hashes
                 content_hashes.update(batch_hashes)
@@ -1037,9 +1157,21 @@ class ContentDetector(BaseDetector):
                 # Save progress after each successful batch
                 self._save_progress(content_hashes, list(content_hashes.keys()), urls)
                 
+                # Track URLs processed in this run for progress reporting
+                urls_processed_this_run.extend(batch_urls)
+                print(f"  💾 Progress saved: {len(content_hashes)} URLs processed, {len(content_hashes)}/{len(urls)} total")
+                
                 # Check for IP-level rate limiting from previous runs
                 if self._is_ip_level_rate_limited(rate_limit_success_rate, step + 1):
                     print(f"  🚨 IP-LEVEL RATE LIMITING FROM PREVIOUS RUN DETECTED (step {step + 1}, rate-limit success rate: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%})")
+                    
+                    # Check for severe IP-level rate limiting that should stop the process
+                    if rate_limit_success_rate < 0.05:
+                        print(f"  🛑 SEVERE IP-LEVEL RATE LIMITING DETECTED - Stopping process to avoid further issues")
+                        print(f"  📊 Rate-limit success rate: {rate_limit_success_rate:.1%} - IP is completely blocked")
+                        self._stopped_due_to_rate_limiting = True  # Set the flag
+                        break
+                    
                     session = await self._handle_ip_level_rate_limiting(session)
                     
                     # Reset to very conservative settings
@@ -1055,6 +1187,14 @@ class ContentDetector(BaseDetector):
                 # Check for immediate rate limiting (first few batches)
                 if self._is_immediately_rate_limited(rate_limit_success_rate, step + 1):
                     print(f"  🚨 IMMEDIATE RATE LIMITING DETECTED (step {step + 1}, rate-limit success rate: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%})")
+                    
+                    # Check for severe immediate rate limiting that should stop the process
+                    if rate_limit_success_rate < 0.1:
+                        print(f"  🛑 SEVERE IMMEDIATE RATE LIMITING DETECTED - Stopping process to avoid further issues")
+                        print(f"  📊 Rate-limit success rate: {rate_limit_success_rate:.1%} - Site is actively blocking us")
+                        self._stopped_due_to_rate_limiting = True  # Set the flag
+                        break
+                    
                     print(f"  📉 Aggressive response: Reducing to 1 concurrent request and pausing...")
                     
                     # Very aggressive response for immediate rate limiting
@@ -1068,16 +1208,26 @@ class ContentDetector(BaseDetector):
                 # Check for rate limiting
                 if self._is_429_rate_limited(rate_limit_success_rate, consecutive_failures):
                     consecutive_failures += 1
-                    print(f"  ⚠️  Rate limiting detected (rate-limit success rate: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%}) - Pausing and reducing concurrency...")
+                    print(f"  ⚠️  Rate limiting detected (rate-limit success rate: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%}) - Handling with proper backoff...")
+                    
+                    # Check for severe rate limiting that should stop the process
+                    if rate_limit_success_rate < 0.2 and consecutive_failures >= 2:
+                        print(f"  🛑 SEVERE RATE LIMITING DETECTED - Stopping process to avoid further issues")
+                        print(f"  📊 Rate-limit success rate: {rate_limit_success_rate:.1%}, consecutive failures: {consecutive_failures}")
+                        self._stopped_due_to_rate_limiting = True  # Set the flag
+                        break
+                    
+                    # Use the new rate limiting handler
+                    session = await self._handle_rate_limiting(session, self._consecutive_429s)
+                    
+                    # Reset rate limiting counters
+                    self._consecutive_429s = 0
+                    self._last_429_time = None
                     
                     # Very aggressive backoff for rate limiting
                     new_concurrency = max(1, int(current_concurrency * 0.3))  # Reduce by 70%
                     print(f"  📉 Reducing concurrency to {new_concurrency} due to rate limiting")
                     current_concurrency = new_concurrency
-                    
-                    # Much longer pause for rate limiting (30 seconds)
-                    print(f"  ⏸️  Pausing for 30 seconds to let rate limiting reset...")
-                    await asyncio.sleep(30)
                     continue
                 else:
                     consecutive_failures = 0  # Reset counter if success rate improves
@@ -1086,6 +1236,14 @@ class ContentDetector(BaseDetector):
                 if self._is_persistent_low_success(rate_limit_success_rate, consecutive_low_success):
                     consecutive_low_success += 1
                     print(f"  🚨 PERSISTENT LOW SUCCESS RATE DETECTED (rate-limit: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%}) - Consecutive low success: {consecutive_low_success}")
+                    
+                    # Check for severe persistent low success that should stop the process
+                    if rate_limit_success_rate < 0.3 and consecutive_low_success >= 3:
+                        print(f"  🛑 SEVERE PERSISTENT LOW SUCCESS DETECTED - Stopping process to avoid further issues")
+                        print(f"  📊 Rate-limit success rate: {rate_limit_success_rate:.1%}, consecutive low success: {consecutive_low_success}")
+                        self._stopped_due_to_rate_limiting = True  # Set the flag
+                        break
+                    
                     print(f"  📉 This suggests rate limiting - Reducing concurrency and pausing...")
                     
                     # Aggressive backoff for persistent low success
@@ -1153,7 +1311,8 @@ class ContentDetector(BaseDetector):
             await session.close()
         
         # Retry failed URLs with lower concurrency for 100% accuracy
-        if failed_urls:
+        # BUT ONLY if we didn't stop due to severe rate limiting
+        if failed_urls and not self._stopped_due_to_rate_limiting:
             print(f"Retrying {len(failed_urls)} failed URLs with conservative settings...")
             retry_concurrency = max(1, current_concurrency // 2)  # Use half the current concurrency
             
@@ -1173,8 +1332,8 @@ class ContentDetector(BaseDetector):
                 retry_successful = 0
                 for j, result in enumerate(retry_results):
                     url = failed_urls[j]
-                    if isinstance(result, tuple) and len(result) == 2:
-                        url, content_hash = result
+                    if isinstance(result, tuple) and len(result) == 3:
+                        url, content_hash, failure_type = result
                         if content_hash:
                             content_hashes[url] = {
                                 "hash": content_hash,
@@ -1187,6 +1346,8 @@ class ContentDetector(BaseDetector):
                 print(f"Retry completed - {retry_successful}/{len(failed_urls)} URLs successfully retried")
             finally:
                 await retry_session.close()
+        elif failed_urls and self._stopped_due_to_rate_limiting:
+            print(f"🛑 Skipping retry of {len(failed_urls)} failed URLs due to severe rate limiting - will retry in next run")
         
         return content_hashes
 
@@ -1221,15 +1382,27 @@ class ContentDetector(BaseDetector):
 
     async def _cleanup_connections(self):
         """Properly cleanup connections to prevent SSL shutdown issues."""
-        try:
-            if self._session:
-                await self._session.close()
-                self._session = None
-            if self._connector:
-                await self._connector.close()
-                self._connector = None
-        except Exception as e:
-            logger.debug(f"Error during connection cleanup: {e}")
+        async with self._session_lock:
+            try:
+                if self._session is not None:
+                    try:
+                        await self._session.close()
+                    except Exception:
+                        pass  # Ignore errors when closing session
+                    self._session = None
+                
+                if self._connector is not None:
+                    try:
+                        await self._connector.close()
+                    except Exception:
+                        pass  # Ignore errors when closing connector
+                    self._connector = None
+                    
+                self._ssl_context = None
+                self._session_creation_time = None
+                self._request_count = 0
+            except Exception as e:
+                logger.debug(f"Error during connection cleanup: {e}")
 
     async def close(self):
         """Close the session and connector."""
@@ -1284,6 +1457,47 @@ class ContentDetector(BaseDetector):
         
         return False
 
+    async def _handle_rate_limiting(self, session: aiohttp.ClientSession, consecutive_429s: int) -> aiohttp.ClientSession:
+        """Handle rate limiting with proper backoff and retry logic."""
+        print(f"  🚨 RATE LIMITING DETECTED - Consecutive 429s: {consecutive_429s}")
+        
+        # Calculate backoff time based on consecutive 429s
+        if consecutive_429s <= 3:
+            backoff_time = 30  # 30 seconds for first few 429s
+        elif consecutive_429s <= 5:
+            backoff_time = 60  # 1 minute for moderate rate limiting
+        else:
+            backoff_time = 120  # 2 minutes for persistent rate limiting
+        
+        print(f"  ⏸️  Pausing for {backoff_time} seconds to let rate limiting reset...")
+        await asyncio.sleep(backoff_time)
+        
+        # Force session rotation with new user agent
+        if self.user_agent_rotation:
+            import random
+            self._current_user_agent = random.choice(self.user_agents)
+            print(f"  🔄 Rotated to new user agent: {self._current_user_agent[:50]}...")
+        
+        # Create completely new session
+        session = await self._create_ultra_fast_session()
+        
+        # Add extra headers to appear more like a real browser
+        if session and hasattr(session, '_default_headers'):
+            session._default_headers.update({
+                'DNT': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'max-age=0'
+            })
+        
+        print(f"  🔄 Created new session with enhanced browser headers")
+        return session
+
     async def _handle_ip_level_rate_limiting(self, session: aiohttp.ClientSession) -> aiohttp.ClientSession:
         """Handle IP-level rate limiting from previous runs with aggressive countermeasures."""
         print(f"  🚨 IP-LEVEL RATE LIMITING DETECTED - Implementing aggressive countermeasures...")
@@ -1301,17 +1515,18 @@ class ContentDetector(BaseDetector):
         session = await self._create_ultra_fast_session()
         
         # Add extra headers to appear more like a real browser
-        session._default_headers.update({
-            'DNT': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Cache-Control': 'max-age=0'
-        })
+        if session and hasattr(session, '_default_headers'):
+            session._default_headers.update({
+                'DNT': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'max-age=0'
+            })
         
         print(f"  🔄 Created new session with enhanced browser headers")
         return session

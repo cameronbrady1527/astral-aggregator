@@ -14,6 +14,7 @@ import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import os
+import re
 
 # Internal -----
 from .base_detector import BaseDetector, ChangeResult
@@ -45,6 +46,32 @@ class ChangeDetector:
         self.baseline_manager = BaselineManager()
         self.firecrawl_config = self.config_manager.get_firecrawl_config()
     
+    def _delete_progress_files(self, site_name: str):
+        """Delete progress files for a site after baseline creation."""
+        try:
+            progress_dir = "progress"
+            if not os.path.exists(progress_dir):
+                return
+            
+            # Create safe site name (same logic as in ContentDetector)
+            safe_site_name = re.sub(r'[^a-zA-Z0-9]', '_', site_name)
+            
+            # Delete simple progress file
+            simple_progress_file = os.path.join(progress_dir, f"{safe_site_name}_progress.json")
+            if os.path.exists(simple_progress_file):
+                os.remove(simple_progress_file)
+                print(f"🗑️ Deleted progress file: {simple_progress_file}")
+            
+            # Delete any timestamped progress files for this site
+            progress_files = [f for f in os.listdir(progress_dir) if f.startswith(f"{safe_site_name}_progress_") and f.endswith('.json')]
+            for progress_file in progress_files:
+                file_path = os.path.join(progress_dir, progress_file)
+                os.remove(file_path)
+                print(f"🗑️ Deleted progress file: {file_path}")
+                
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to delete progress files for {site_name}: {e}")
+
     async def detect_changes_for_site(self, site_id: str) -> Dict[str, Any]:
         """Detect changes for a specific site using all configured methods."""
         site_config = self.config_manager.get_site(site_id)
@@ -113,6 +140,37 @@ class ChangeDetector:
         
         # If no baseline exists, create initial baseline
         if current_baseline is None:
+            # Check if the current state indicates rate limiting
+            if current_state.get("rate_limited", False):
+                progress_pages = len(current_state.get("content_hashes", {}))
+                print(f"🛑 Rate limiting detected for {site_config.name} - skipping baseline creation")
+                print(f"📊 Progress from previous runs: {progress_pages} URLs with content hashes preserved")
+                print(f"💡 Note: Content hashes from previous successful runs are preserved but not used for baseline creation")
+                
+                return {
+                    "detection_method": method,
+                    "site_name": site_config.name,
+                    "detection_time": datetime.now().isoformat(),
+                    "error": "Severe rate limiting detected - baseline creation skipped",
+                    "rate_limited": True,
+                    "changes": [],
+                    "summary": {
+                        "total_changes": 0,
+                        "new_pages": 0,
+                        "modified_pages": 0,
+                        "deleted_pages": 0
+                    },
+                    "metadata": {
+                        "message": "Baseline creation skipped due to rate limiting",
+                        "baseline_created": False,
+                        "rate_limited": True,
+                        "progress_pages": progress_pages,
+                        "note": f"Content hashes from {progress_pages} URLs from previous runs are preserved but not used for baseline creation"
+                    },
+                    "baseline_updated": False,
+                    "baseline_file": None
+                }
+            
             print(f"📋 No baseline found for {site_config.name}, creating initial baseline...")
             
             # For initial baseline, we need to fetch content hashes if this is a sitemap-only detection
@@ -181,6 +239,9 @@ class ChangeDetector:
             # Still write current state for historical tracking
             self.writer.write_site_state(site_config.name, current_state)
             
+            # Delete progress files after successful baseline creation
+            self._delete_progress_files(site_config.name)
+            
             return {
                 "detection_method": method,
                 "site_name": site_config.name,
@@ -199,6 +260,40 @@ class ChangeDetector:
                 },
                 "baseline_updated": True,
                 "baseline_file": baseline_file
+            }
+        
+        # Check if the current state indicates rate limiting (even with existing baseline)
+        if current_state.get("rate_limited", False):
+            progress_pages = len(current_state.get("content_hashes", {}))
+            baseline_pages = len(current_baseline.get("content_hashes", {})) if current_baseline else 0
+            print(f"🛑 Rate limiting detected for {site_config.name} - skipping change detection")
+            print(f"📊 Progress from previous runs: {progress_pages} URLs with content hashes preserved")
+            print(f"📋 Existing baseline: {baseline_pages} URLs")
+            print(f"💡 Note: Content hashes from previous successful runs are preserved but change detection is skipped")
+            
+            return {
+                "detection_method": method,
+                "site_name": site_config.name,
+                "detection_time": datetime.now().isoformat(),
+                "error": "Severe rate limiting detected - change detection skipped",
+                "rate_limited": True,
+                "changes": [],
+                "summary": {
+                    "total_changes": 0,
+                    "new_pages": 0,
+                    "modified_pages": 0,
+                    "deleted_pages": 0
+                },
+                "metadata": {
+                    "message": "Change detection skipped due to rate limiting",
+                    "baseline_created": False,
+                    "rate_limited": True,
+                    "progress_pages": progress_pages,
+                    "baseline_pages": baseline_pages,
+                    "note": f"Content hashes from {progress_pages} URLs from previous runs are preserved but change detection is skipped"
+                },
+                "baseline_updated": False,
+                "baseline_file": None
             }
         
         # Detect changes against the current baseline
@@ -239,6 +334,9 @@ class ChangeDetector:
                 print(f"⚠️ Baseline merge validation failed: {validation_result['errors']}")
             elif validation_result["warnings"]:
                 print(f"⚠️ Baseline merge warnings: {validation_result['warnings']}")
+            
+            # Delete progress files after successful baseline update
+            self._delete_progress_files(site_config.name)
         
         # Still write current state for historical tracking
         self.writer.write_site_state(site_config.name, current_state)
