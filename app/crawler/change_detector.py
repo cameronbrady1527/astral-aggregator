@@ -155,7 +155,28 @@ class ChangeDetector:
             initial_baseline = self.baseline_manager.merger.create_initial_baseline(
                 site_config.name, site_config.name, current_state
             )
-            baseline_file = self.baseline_manager.save_baseline(site_config.name, initial_baseline)
+            
+            # Check if we have an existing baseline that might be incorrect
+            existing_baseline = self.baseline_manager.get_latest_baseline(site_config.name)
+            if existing_baseline:
+                # Check if the existing baseline is incorrect (has wrong number of content hashes)
+                existing_content_hashes = len(existing_baseline.get('content_hashes', {}))
+                new_content_hashes = len(initial_baseline.get('content_hashes', {}))
+                existing_sitemap_urls = len(existing_baseline.get('sitemap_state', {}).get('urls', []))
+                new_sitemap_urls = len(initial_baseline.get('sitemap_state', {}).get('urls', []))
+                
+                # If the existing baseline has significantly fewer content hashes than sitemap URLs, it's likely incorrect
+                if (existing_content_hashes < existing_sitemap_urls * 0.5 and 
+                    new_content_hashes >= new_sitemap_urls * 0.9):
+                    print(f"⚠️ Existing baseline appears incorrect ({existing_content_hashes} vs {existing_sitemap_urls} URLs)")
+                    print(f"🔄 Replacing with correct baseline ({new_content_hashes} content hashes)")
+                    baseline_file = self.baseline_manager.replace_baseline(site_config.name, initial_baseline)
+                else:
+                    # Existing baseline looks correct, create new one
+                    baseline_file = self.baseline_manager.save_baseline(site_config.name, initial_baseline)
+            else:
+                # No existing baseline, create new one
+                baseline_file = self.baseline_manager.save_baseline(site_config.name, initial_baseline)
             
             # Still write current state for historical tracking
             self.writer.write_site_state(site_config.name, current_state)

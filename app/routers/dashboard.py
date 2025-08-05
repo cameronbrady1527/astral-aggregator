@@ -1062,6 +1062,10 @@ async def dashboard():
                                 eventIcon = '❌';
                                 eventColor = '#ef4444';
                                 eventTitle = 'Baseline Error';
+                            } else if (event.event_type === 'baseline_replaced') {
+                                eventIcon = '🔄';
+                                eventColor = '#8b5cf6';
+                                eventTitle = 'Baseline Replaced';
                             } else if (event.event_type === 'baseline_validation') {
                                 eventIcon = details.is_valid ? '✅' : '⚠️';
                                 eventColor = details.is_valid ? '#10b981' : '#f59e0b';
@@ -1075,6 +1079,8 @@ async def dashboard():
                                 eventDetails = `${details.changes_applied} changes applied (${details.new_urls} new, ${details.modified_urls} modified, ${details.deleted_urls} deleted)`;
                             } else if (event.event_type === 'baseline_error') {
                                 eventDetails = details.error;
+                            } else if (event.event_type === 'baseline_replaced') {
+                                eventDetails = `${details.total_urls} URLs, ${details.total_content_hashes} content hashes`;
                             } else if (event.event_type === 'baseline_validation') {
                                 if (details.errors && details.errors.length > 0) {
                                     eventDetails = `${details.errors.length} validation errors`;

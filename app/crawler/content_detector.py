@@ -43,6 +43,11 @@ class ContentDetector(BaseDetector):
     def __init__(self, site_config: Any):
         super().__init__(site_config)
         
+        # Sitemap configuration
+        self.sitemap_url = getattr(site_config, 'sitemap_url', None)
+        if not self.sitemap_url:
+            self.sitemap_url = self._guess_sitemap_url()
+        
         # Content detection settings
         self.content_selectors = getattr(site_config, 'content_selectors', [
             'main', 'article', '.content', '#content', '.main-content'
@@ -90,6 +95,12 @@ class ContentDetector(BaseDetector):
         # SSL and connection management
         self._ssl_context = None
         self._connection_cleanup_task = None
+
+    def _guess_sitemap_url(self) -> str:
+        """Guess the sitemap URL if not provided."""
+        from urllib.parse import urlparse
+        parsed = urlparse(self.site_url)
+        return f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
 
     async def get_current_state(self) -> Dict[str, Any]:
         """Get the current state by fetching and hashing content from key pages."""
@@ -197,20 +208,145 @@ class ContentDetector(BaseDetector):
         return result
 
     async def _get_sitemap_urls(self) -> List[str]:
-        """Get URLs from sitemap."""
+        """Get URLs from sitemap, handling both single sitemaps and sitemap indexes."""
         try:
             import aiohttp
+            import xml.etree.ElementTree as ET
+            
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.sitemap_url) as response:
-                    if response.status == 200:
-                        content = await response.text()
-                        # Simple regex-based sitemap parsing
-                        urls = re.findall(r'<loc>(.*?)</loc>', content)
-                        return urls
+                async with session.get(self.sitemap_url, timeout=30) as response:
+                    if response.status != 200:
+                        raise Exception(f"Failed to fetch sitemap: {response.status}")
+                    
+                    content = await response.text()
+                    
+                    # Check if this is a sitemap index
+                    if self._is_sitemap_index(content):
+                        return await self._fetch_sitemap_index_urls(session, content)
+                    else:
+                        # Single sitemap
+                        return self._parse_sitemap_urls(content)
+                        
         except Exception as e:
             logger.warning(f"Warning: Could not get sitemap URLs: {e}")
             # Fallback to main page
             return [self.site_url]
+
+    def _is_sitemap_index(self, content: str) -> bool:
+        """Check if the XML content is a sitemap index."""
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(content)
+            namespaces = {
+                'sitemap': 'http://www.sitemaps.org/schemas/sitemap/0.9'
+            }
+            
+            # Look for sitemap elements (indicating an index)
+            sitemap_elements = root.findall('.//sitemap:sitemap', namespaces)
+            if not sitemap_elements:
+                sitemap_elements = root.findall('.//sitemap')
+            
+            return len(sitemap_elements) > 0
+        except ET.ParseError:
+            return False
+
+    async def _fetch_sitemap_index_urls(self, session: aiohttp.ClientSession, index_content: str) -> List[str]:
+        """Fetch URLs from a sitemap index file and all referenced sitemaps."""
+        all_urls = []
+        
+        # Parse the sitemap index
+        sitemap_urls = self._parse_sitemap_index_urls(index_content)
+        
+        # Fetch each individual sitemap
+        tasks = []
+        for sitemap_url in sitemap_urls:
+            tasks.append(self._fetch_individual_sitemap_urls(session, sitemap_url))
+        
+        # Wait for all sitemaps to be fetched
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning(f"Failed to fetch sitemap: {result}")
+            else:
+                all_urls.extend(result)
+        
+        return all_urls
+
+    def _parse_sitemap_index_urls(self, content: str) -> List[str]:
+        """Parse sitemap index XML to extract sitemap URLs."""
+        sitemap_urls = []
+        
+        try:
+            import xml.etree.ElementTree as ET
+            namespaces = {
+                'sitemap': 'http://www.sitemaps.org/schemas/sitemap/0.9'
+            }
+            
+            root = ET.fromstring(content)
+            
+            sitemap_elements = root.findall('.//sitemap:sitemap', namespaces)
+            if not sitemap_elements:
+                sitemap_elements = root.findall('.//sitemap')
+            
+            for sitemap_elem in sitemap_elements:
+                loc_elem = sitemap_elem.find('sitemap:loc', namespaces)
+                if loc_elem is None:
+                    loc_elem = sitemap_elem.find('loc')
+                
+                if loc_elem is not None and loc_elem.text:
+                    sitemap_urls.append(loc_elem.text.strip())
+            
+        except ET.ParseError as e:
+            logger.warning(f"Failed to parse sitemap index XML: {e}")
+        
+        return sitemap_urls
+
+    async def _fetch_individual_sitemap_urls(self, session: aiohttp.ClientSession, sitemap_url: str) -> List[str]:
+        """Fetch and parse an individual sitemap."""
+        try:
+            async with session.get(sitemap_url, timeout=30) as response:
+                if response.status != 200:
+                    raise Exception(f"Failed to fetch sitemap {sitemap_url}: {response.status}")
+                
+                content = await response.text()
+                return self._parse_sitemap_urls(content)
+                
+        except Exception as e:
+            logger.warning(f"Failed to fetch sitemap {sitemap_url}: {e}")
+            return []
+
+    def _parse_sitemap_urls(self, content: str) -> List[str]:
+        """Parse sitemap XML to extract URLs."""
+        urls = []
+        
+        try:
+            import xml.etree.ElementTree as ET
+            namespaces = {
+                'sitemap': 'http://www.sitemaps.org/schemas/sitemap/0.9'
+            }
+            
+            root = ET.fromstring(content)
+            
+            # Look for URL elements
+            url_elements = root.findall('.//sitemap:url', namespaces)
+            if not url_elements:
+                url_elements = root.findall('.//url')
+            
+            for url_elem in url_elements:
+                loc_elem = url_elem.find('sitemap:loc', namespaces)
+                if loc_elem is None:
+                    loc_elem = url_elem.find('loc')
+                
+                if loc_elem is not None and loc_elem.text:
+                    urls.append(loc_elem.text.strip())
+            
+        except ET.ParseError as e:
+            # Fallback to regex parsing if XML parsing fails
+            logger.warning(f"XML parsing failed, using regex fallback: {e}")
+            urls = re.findall(r'<loc>(.*?)</loc>', content)
+        
+        return urls
     
     async def _create_ultra_fast_session(self) -> aiohttp.ClientSession:
         """Create an optimized session with massive connection pooling and SSL fixes."""
@@ -257,6 +393,15 @@ class ContentDetector(BaseDetector):
         
         return self._session
 
+    async def _create_new_session(self) -> aiohttp.ClientSession:
+        """Create a fresh session and cleanup the old one."""
+        await self._cleanup_connections()
+        return await self._create_ultra_fast_session()
+
+    def _is_permanently_blocked(self, batch_success_rate: float, consecutive_failures: int) -> bool:
+        """Detect if we're permanently blocked (e.g., 0% success rate for 2+ batches)."""
+        return batch_success_rate == 0.0 and consecutive_failures >= 2
+
     async def _fetch_content_hashes_ultra_fast(self, urls: List[str]) -> Dict[str, Dict[str, Any]]:
         """Fetch content hashes with ultra-fast optimization and adaptive rate limiting."""
         if not urls:
@@ -276,6 +421,9 @@ class ContentDetector(BaseDetector):
             # Process URLs with progressive ramping if enabled
             if self.progressive_ramping and len(urls) > self.ramp_batch_size:
                 content_hashes = await self._fetch_with_progressive_ramping(session, urls)
+                # Calculate final success rate from content_hashes when using progressive ramping
+                successful_fetches = len(content_hashes)
+                failed_fetches = len(urls) - successful_fetches
             else:
                 # Process URLs in batches to manage memory
                 for i in range(0, len(urls), self.batch_size):
@@ -505,6 +653,7 @@ class ContentDetector(BaseDetector):
         content_hashes = {}
         current_concurrency = self.ramp_start_concurrency
         failed_urls = []  # Track failed URLs for retry
+        consecutive_blocked_batches = 0  # Track consecutive 0% batches
         
         # Process URLs in small batches with increasing concurrency
         for i in range(0, len(urls), self.ramp_batch_size):
@@ -529,7 +678,6 @@ class ContentDetector(BaseDetector):
             batch_successful = 0
             batch_failed = 0
             batch_failed_urls = []
-            
             for j, result in enumerate(batch_results):
                 url = batch_urls[j]
                 if isinstance(result, tuple) and len(result) == 2:
@@ -554,6 +702,17 @@ class ContentDetector(BaseDetector):
             
             # Calculate success rate for this batch
             batch_success_rate = batch_successful / len(batch_urls) if batch_urls else 0
+            
+            # Blocking detection and session rotation
+            if batch_success_rate == 0.0:
+                consecutive_blocked_batches += 1
+            else:
+                consecutive_blocked_batches = 0
+            if self._is_permanently_blocked(batch_success_rate, consecutive_blocked_batches):
+                print(f"  🚨 Detected possible blocking (0% success for 2+ batches) - Rotating session and pausing...")
+                session = await self._create_new_session()
+                consecutive_blocked_batches = 0
+                await asyncio.sleep(2)  # Small pause to let server reset
             
             # Adjust concurrency for next batch
             if batch_success_rate >= 0.95:  # 95% success rate

@@ -122,6 +122,14 @@ class BaselineManager:
             baseline_logger.error(f"❌ BASELINE ERROR for {site_id}")
             baseline_logger.error(f"   🚨 Error: {details.get('error', 'Unknown error')}")
             
+        elif event_type == "baseline_replaced":
+            baseline_logger.info(f"🔄 BASELINE REPLACED for {site_id}")
+            baseline_logger.info(f"   📁 File: {details.get('file_path', 'N/A')}")
+            baseline_logger.info(f"   💾 Backup: {details.get('backup_file', 'N/A')}")
+            baseline_logger.info(f"   📊 URLs: {details.get('total_urls', 0)}")
+            baseline_logger.info(f"   🔗 Content Hashes: {details.get('total_content_hashes', 0)}")
+            baseline_logger.info(f"   📅 Date: {details.get('baseline_date', 'N/A')}")
+            
         elif event_type == "baseline_validation":
             if details.get('is_valid', False):
                 baseline_logger.info(f"✅ BASELINE VALIDATION PASSED for {site_id}")
@@ -275,6 +283,9 @@ class BaselineManager:
                         "evolution_type": evolution_type
                     })
                 
+                # Auto-cleanup old baselines after saving new ones
+                self._auto_cleanup_baselines(site_id)
+                
                 return str(baseline_file)
             else:
                 raise Exception(f"Failed to write baseline file or file is empty: {baseline_file}")
@@ -284,6 +295,61 @@ class BaselineManager:
             self._log_baseline_event("baseline_error", site_id, {
                 "error": str(e),
                 "operation": "save_baseline"
+            })
+            raise
+
+    def replace_baseline(self, site_id: str, baseline_data: Dict[str, Any]) -> str:
+        """Replace the existing baseline with new data, keeping the same filename."""
+        try:
+            # Ensure the baseline has required metadata
+            if "baseline_date" not in baseline_data:
+                baseline_data["baseline_date"] = datetime.now().strftime("%Y%m%d")
+            
+            if "created_at" not in baseline_data:
+                baseline_data["created_at"] = datetime.now().isoformat()
+            
+            # Find the existing baseline file to replace
+            existing_baseline_files = list(self.baseline_dir.glob(f"{site_id}_*_baseline.json"))
+            if not existing_baseline_files:
+                # No existing baseline, create a new one
+                return self.save_baseline(site_id, baseline_data)
+            
+            # Get the most recent baseline file
+            latest_baseline_file = max(existing_baseline_files, key=lambda x: x.stat().st_mtime)
+            
+            # Create a backup of the existing baseline
+            backup_file = latest_baseline_file.with_suffix('.backup.json')
+            import shutil
+            shutil.copy2(latest_baseline_file, backup_file)
+            
+            # Replace the existing baseline with new data
+            with open(latest_baseline_file, 'w', encoding='utf-8') as f:
+                json.dump(baseline_data, f, indent=2, ensure_ascii=False)
+            
+            # Verify the file was written successfully
+            if latest_baseline_file.exists() and latest_baseline_file.stat().st_size > 0:
+                # Log baseline replacement
+                self._log_baseline_event("baseline_replaced", site_id, {
+                    "file_path": str(latest_baseline_file),
+                    "backup_file": str(backup_file),
+                    "total_urls": baseline_data.get("total_urls", 0),
+                    "total_content_hashes": baseline_data.get("total_content_hashes", 0),
+                    "baseline_date": baseline_data.get("baseline_date"),
+                    "evolution_type": "baseline_replacement"
+                })
+                
+                # Auto-cleanup old baselines after replacement
+                self._auto_cleanup_baselines(site_id)
+                
+                return str(latest_baseline_file)
+            else:
+                raise Exception(f"Failed to write baseline file or file is empty: {latest_baseline_file}")
+            
+        except Exception as e:
+            # Log error
+            self._log_baseline_event("baseline_error", site_id, {
+                "error": str(e),
+                "operation": "replace_baseline"
             })
             raise
     
@@ -544,4 +610,107 @@ class BaselineManager:
             }
             
         except Exception as e:
-            return {"error": f"Error getting storage stats: {e}"} 
+            return {"error": f"Error getting storage stats: {e}"}
+    
+    def _auto_cleanup_baselines(self, site_id: str, max_baselines: int = 3):
+        """Automatically clean up old baselines for a site, keeping only the most recent ones."""
+        try:
+            # Get all baseline files for this site
+            pattern = f"{site_id}_*_baseline.json"
+            baseline_files = list(self.baseline_dir.glob(pattern))
+            
+            # Don't clean up if we have fewer than max_baselines + 1 files
+            if len(baseline_files) <= max_baselines:
+                return
+            
+            # Parse dates and sort files by date (oldest first)
+            file_date_pairs = []
+            for baseline_file in baseline_files:
+                filename = baseline_file.name
+                if filename.endswith("_baseline.json"):
+                    base_name = filename.replace("_baseline.json", "")
+                    parts = base_name.split("_")
+                    
+                    # Find the date part (8 digits: YYYYMMDD)
+                    date_str = None
+                    for i, part in enumerate(parts):
+                        if len(part) == 8 and part.isdigit():
+                            date_str = part
+                            break
+                    
+                    if date_str:
+                        file_date_pairs.append((baseline_file, date_str))
+            
+            # Sort by date (oldest first)
+            file_date_pairs.sort(key=lambda x: x[1])
+            
+            # Delete oldest files, keeping only the most recent max_baselines
+            files_to_delete = file_date_pairs[:-max_baselines]
+            
+            deleted_count = 0
+            for baseline_file, date_str in files_to_delete:
+                try:
+                    baseline_file.unlink()
+                    deleted_count += 1
+                except Exception as e:
+                    print(f"Warning: Could not delete old baseline {baseline_file.name}: {e}")
+            
+            if deleted_count > 0:
+                print(f"🧹 Auto-cleaned {deleted_count} old baseline files for {site_id}")
+                
+        except Exception as e:
+            print(f"Warning: Auto-cleanup failed for {site_id}: {e}")
+    
+    def get_baseline_summary(self) -> Dict[str, Any]:
+        """Get a summary of baseline storage and management status."""
+        try:
+            stats = self.get_storage_stats()
+            if "error" in stats:
+                return stats
+            
+            # Count files per site
+            site_file_counts = {}
+            for baseline_file in self.baseline_dir.glob("*_baseline.json"):
+                if baseline_file.name.endswith("_baseline.json"):
+                    filename = baseline_file.name
+                    base_name = filename.replace("_baseline.json", "")
+                    parts = base_name.split("_")
+                    
+                    # Find the date part (8 digits: YYYYMMDD) and everything before it is the site_id
+                    site_id = None
+                    for i, part in enumerate(parts):
+                        if len(part) == 8 and part.isdigit():
+                            site_id = "_".join(parts[:i])
+                            break
+                    
+                    if site_id:
+                        if site_id not in site_file_counts:
+                            site_file_counts[site_id] = 0
+                        site_file_counts[site_id] += 1
+            
+            # Identify sites that need cleanup
+            sites_needing_cleanup = []
+            for site_id, count in site_file_counts.items():
+                if count > 3:  # More than 3 baselines
+                    sites_needing_cleanup.append({
+                        "site_id": site_id,
+                        "baseline_count": count,
+                        "recommended_action": "cleanup"
+                    })
+            
+            return {
+                "total_files": stats["total_files"],
+                "total_size_mb": stats["total_size_mb"],
+                "site_stats": stats["site_stats"],
+                "site_file_counts": site_file_counts,
+                "sites_needing_cleanup": sites_needing_cleanup,
+                "recommendations": {
+                    "auto_cleanup_enabled": True,
+                    "max_baselines_per_site": 3,
+                    "total_sites": len(site_file_counts),
+                    "sites_with_multiple_baselines": len(sites_needing_cleanup)
+                }
+            }
+            
+        except Exception as e:
+            return {"error": f"Error getting baseline summary: {e}"} 

@@ -86,7 +86,8 @@ class HybridDetector(BaseDetector):
             if previous_baseline is None:
                 result.metadata["message"] = "First run - establishing hybrid baseline"
                 result.metadata["total_urls"] = len(current_state.get("sitemap_state", {}).get("urls", []))
-                result.metadata["total_content_hashes"] = len(current_state.get("content_state", {}).get("content_hashes", {}) if current_state.get("content_state") else {})
+                content_state = current_state.get("content_state")
+                result.metadata["total_content_hashes"] = len(content_state.get("content_hashes", {}) if content_state else {})
                 return result
             
             # Compare sitemap URLs
@@ -106,7 +107,8 @@ class HybridDetector(BaseDetector):
             
             # Compare content hashes for common URLs
             baseline_hashes = previous_baseline.get("content_hashes", {})
-            current_hashes = current_state.get("content_state", {}).get("content_hashes", {})
+            content_state = current_state.get("content_state")
+            current_hashes = content_state.get("content_hashes", {}) if content_state else {}
             
             content_changes = 0
             for url in common_urls:
