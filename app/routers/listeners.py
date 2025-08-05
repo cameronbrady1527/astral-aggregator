@@ -11,6 +11,7 @@
 
 # Standard Library -----
 import asyncio
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import json
@@ -26,6 +27,9 @@ from ..crawler.change_detector import ChangeDetector
 # ==============================================================================
 
 router = APIRouter(prefix="/api/listeners", tags=["listeners"])
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Lazy initialization of change detector
 _change_detector = None
@@ -587,7 +591,7 @@ async def get_system_analytics() -> Dict[str, Any]:
                                 site_urls = value["total_urls"]
                                 break
                     
-                    print(f"Found {site_urls} URLs for {site_config.name} using state file")
+                    logger.debug(f"Found {site_urls} URLs for {site_config.name} using state file")
                     
                 except Exception as e:
                     print(f"Error reading state file for {site_config.name}: {e}")
@@ -613,7 +617,7 @@ async def get_system_analytics() -> Dict[str, Any]:
                                             for field in ["current_urls", "total_urls", "urls_count"]:
                                                 if field in metadata:
                                                     site_urls = metadata[field]
-                                                    print(f"Found {site_urls} URLs for {site_config.name} from change file metadata")
+                                                    logger.debug(f"Found {site_urls} URLs for {site_config.name} from change file metadata")
                                                     break
                                             if site_urls > 0:
                                                 break
@@ -622,7 +626,7 @@ async def get_system_analytics() -> Dict[str, Any]:
                                         sitemap_info = method_data.get("sitemap_info", {})
                                         if sitemap_info and "total_urls" in sitemap_info:
                                             site_urls = sitemap_info["total_urls"]
-                                            print(f"Found {site_urls} URLs for {site_config.name} from sitemap_info")
+                                            logger.debug(f"Found {site_urls} URLs for {site_config.name} from sitemap_info")
                                             break
                                     
                                     if site_urls > 0:
@@ -902,7 +906,7 @@ async def get_realtime_status() -> Dict[str, Any]:
                                 current_urls = value["total_urls"]
                                 break
                     
-                    print(f"Found {current_urls} URLs for {site_config.name} in realtime")
+                    logger.debug(f"Found {current_urls} URLs for {site_config.name} in realtime")
                     
                 except Exception as e:
                     print(f"Error reading state file for {site_config.name}: {e}")
@@ -928,7 +932,7 @@ async def get_realtime_status() -> Dict[str, Any]:
                                             for field in ["current_urls", "total_urls", "urls_count"]:
                                                 if field in metadata:
                                                     current_urls = metadata[field]
-                                                    print(f"Found {current_urls} URLs for {site_config.name} from change file metadata in realtime")
+                                                    logger.debug(f"Found {current_urls} URLs for {site_config.name} from change file metadata in realtime")
                                                     break
                                             if current_urls > 0:
                                                 break
