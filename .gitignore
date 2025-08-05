@@ -2,13 +2,19 @@
 # .gitignore — Git ignore patterns for change detection system
 # ==============================================================================
 
-# Output files
+# Large data directories (performance optimization)
 output/
-*.json
-
-# Cache directories
+baselines/
+changes/
+comparison_results/
 cache/
 temp_files/
+progress/
+
+# Large JSON files (performance optimization)
+*.json
+
+# Cache files
 *.cache
 
 # Python
@@ -34,9 +40,9 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
+# Virtual environments (performance optimization - 72MB)
 .env
-.venv
+.venv/
 env/
 venv/
 ENV/
@@ -82,14 +88,15 @@ htmlcov/
 # Pytest cache
 .pytest_cache/
 
-# Cursor IDE
-.cursor/
-
 # Python version file
 .python-version
 
-# Changes directory for change detection results
-changes/
-
 # Backup Scripts
 scripts/backup/
+
+# Performance optimization - exclude large binary files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.pyd
