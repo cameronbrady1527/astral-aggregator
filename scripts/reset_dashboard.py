@@ -6,7 +6,8 @@ Reset Dashboard Script
 This script resets the dashboard to starting values by:
 1. Deleting all baseline files
 2. Clearing baseline events
-3. Resetting the system to a clean state
+3. Clearing progress files for sites
+4. Resetting the system to a clean state
 
 Usage:
     python scripts/reset_dashboard.py
@@ -29,6 +30,7 @@ def reset_dashboard():
     baselines_dir = project_root / "baselines"
     output_dir = project_root / "output"
     cache_dir = project_root / "cache"
+    progress_dir = project_root / "progress"
     
     # 1. Delete all baseline files
     print("\n🗑️  Deleting baseline files...")
@@ -89,7 +91,23 @@ def reset_dashboard():
     else:
         print("   ℹ️  No cache directory found")
     
-    # 4. Create fresh baseline events file with empty structure
+    # 4. Clear progress files for sites
+    print("\n📊 Clearing progress files for sites...")
+    if progress_dir.exists():
+        progress_files = list(progress_dir.glob("*_progress.json"))
+        cleared_count = 0
+        for progress_file in progress_files:
+            try:
+                progress_file.unlink()
+                cleared_count += 1
+                print(f"   ✅ Cleared progress: {progress_file.name}")
+            except Exception as e:
+                print(f"   ❌ Error clearing progress {progress_file.name}: {e}")
+        print(f"   📊 Total progress files cleared: {cleared_count}")
+    else:
+        print("   ℹ️  No progress directory found")
+    
+    # 5. Create fresh baseline events file with empty structure
     print("\n📝 Creating fresh baseline events file...")
     if baselines_dir.exists():
         baseline_events_file = baselines_dir / "baseline_events.json"
@@ -101,12 +119,12 @@ def reset_dashboard():
         except Exception as e:
             print(f"   ❌ Error creating baseline_events.json: {e}")
     
-    # 5. Create a reset marker file
+    # 6. Create a reset marker file
     reset_marker = project_root / "RESET_MARKER.txt"
     try:
         with open(reset_marker, 'w', encoding='utf-8') as f:
             f.write(f"Dashboard reset completed at: {datetime.now().isoformat()}\n")
-            f.write("All baseline files and output data have been cleared.\n")
+            f.write("All baseline files, output data, and progress files have been cleared.\n")
             f.write("The system is now in a clean starting state.\n")
         print(f"   ✅ Created reset marker: {reset_marker.name}")
     except Exception as e:
@@ -118,6 +136,7 @@ def reset_dashboard():
     print("   • All baseline files deleted")
     print("   • Output directories cleared")
     print("   • Cache cleared")
+    print("   • Progress files for sites cleared")
     print("   • Fresh baseline events file created")
     print("   • Reset marker file created")
     print("\n🚀 The system is now ready to start fresh!")

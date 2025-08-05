@@ -559,11 +559,12 @@ class ContentDetector(BaseDetector):
         batch_hashes = {}
         success_count = 0
         failure_count = 0
+        rate_limit_failures = 0  # Track only rate-limiting related failures
         
         for i, result in enumerate(results):
             url = urls[i]
-            if isinstance(result, tuple) and len(result) == 2:
-                url, content_hash = result
+            if isinstance(result, tuple) and len(result) == 3:
+                url, content_hash, failure_type = result
                 if content_hash:
                     batch_hashes[url] = {
                         "hash": content_hash,
@@ -573,8 +574,16 @@ class ContentDetector(BaseDetector):
                     success_count += 1
                 else:
                     failure_count += 1
+                    # Track rate-limiting failures separately (these should affect concurrency)
+                    if failure_type in ["rate_limited", "forbidden", "timeout", "connection_error"]:
+                        rate_limit_failures += 1
+                    # 404s and other client errors should NOT affect concurrency
             else:
                 failure_count += 1
+        
+        # Store rate limit failures for use in concurrency adjustment
+        batch_hashes["_rate_limit_failures"] = rate_limit_failures
+        batch_hashes["_total_failures"] = failure_count
         
         return batch_hashes
 
@@ -631,8 +640,8 @@ class ContentDetector(BaseDetector):
                     
                     for j, result in enumerate(batch_results):
                         url = batch_urls[j]
-                        if isinstance(result, tuple) and len(result) == 2:
-                            url, content_hash = result
+                        if isinstance(result, tuple) and len(result) == 3:
+                            url, content_hash, failure_type = result
                             if content_hash:
                                 content_hashes[url] = {
                                     "hash": content_hash,
@@ -677,8 +686,9 @@ class ContentDetector(BaseDetector):
             # Ensure proper cleanup
             await self._cleanup_connections()
 
-    async def _fetch_single_ultra_fast(self, session: aiohttp.ClientSession, url: str, semaphore: asyncio.Semaphore) -> tuple[str, Optional[str]]:
-        """Fetch and hash content for a single URL with ultra-fast optimization and intelligent retries."""
+    async def _fetch_single_ultra_fast(self, session: aiohttp.ClientSession, url: str, semaphore: asyncio.Semaphore) -> tuple[str, Optional[str], Optional[str]]:
+        """Fetch and hash content for a single URL with ultra-fast optimization and intelligent retries.
+        Returns (url, content_hash, failure_type) where failure_type is None for success, or the type of failure."""
         async with semaphore:
             # Increment request count for session rotation
             self._request_count += 1
@@ -702,11 +712,11 @@ class ContentDetector(BaseDetector):
                             if main_content:
                                 # Create hash of the content
                                 content_hash = hashlib.md5(main_content.encode('utf-8')).hexdigest()
-                                return url, content_hash
+                                return url, content_hash, None  # Success
                             else:
                                 # Log when content extraction fails
                                 print(f"    🔍 No content extracted from {url}")
-                                return url, None
+                                return url, None, "content_extraction_failed"
                         elif response.status == 429:  # Rate limited
                             print(f"    ⚠️  Rate limited (429) for {url}")
                             # Force session rotation on 429
@@ -716,7 +726,7 @@ class ContentDetector(BaseDetector):
                                 session = await self._create_ultra_fast_session()
                             # Immediately return None to signal failure - let batch-level handling deal with it
                             # This will trigger the rate limiting detection in the progressive ramping
-                            return url, None
+                            return url, None, "rate_limited"
                         elif response.status == 403:  # Forbidden
                             print(f"    🚫 Forbidden (403) for {url}")
                             # Force session rotation on 403 (IP-level blocking)
@@ -724,10 +734,10 @@ class ContentDetector(BaseDetector):
                                 print(f"    🔄 Forcing session rotation due to 403 (IP blocking)...")
                                 await self._cleanup_connections()
                                 session = await self._create_ultra_fast_session()
-                            return url, None
+                            return url, None, "forbidden"
                         elif response.status == 404:  # Not Found
                             print(f"    ❌ Not found (404) for {url}")
-                            return url, None
+                            return url, None, "not_found"  # Client-side error, not rate limiting
                         elif response.status == 503:  # Service Unavailable
                             print(f"    🔧 Service unavailable (503) for {url}")
                             await asyncio.sleep(base_delay * (2 ** attempt))
@@ -740,7 +750,7 @@ class ContentDetector(BaseDetector):
                         else:
                             # Client error (404, 403, etc.) - don't retry
                             print(f"    ❌ Client error ({response.status}) for {url}")
-                            return url, None
+                            return url, None, "client_error"
                             
                 except asyncio.TimeoutError:
                     print(f"    ⏰ Timeout for {url}")
@@ -748,7 +758,7 @@ class ContentDetector(BaseDetector):
                     if attempt < max_retries - 1:
                         await asyncio.sleep(base_delay * (2 ** attempt))
                         continue
-                    return url, None
+                    return url, None, "timeout"
                 except aiohttp.ClientConnectionError as e:
                     print(f"    🔌 Connection error for {url}: {str(e)[:50]}...")
                     # Handle SSL shutdown and connection errors specifically
@@ -756,16 +766,16 @@ class ContentDetector(BaseDetector):
                         if attempt < max_retries - 1:
                             await asyncio.sleep(base_delay * (2 ** attempt) * 2)  # Longer delay for connection issues
                             continue
-                    return url, None
+                    return url, None, "connection_error"
                 except Exception as e:
                     print(f"    💥 Exception for {url}: {str(e)[:50]}...")
                     # Other exceptions - retry with exponential backoff
                     if attempt < max_retries - 1:
                         await asyncio.sleep(base_delay * (2 ** attempt))
                         continue
-                    return url, None
+                    return url, None, "exception"
             
-            return url, None
+            return url, None, "max_retries_exceeded"
 
     def _extract_main_content_ultra_fast(self, html_content: str) -> Optional[str]:
         """Extract main content using ultra-fast regex-based method."""
@@ -830,7 +840,9 @@ class ContentDetector(BaseDetector):
     async def _fetch_single_content_hash(self, session: aiohttp.ClientSession, url: str) -> tuple[str, Optional[str]]:
         """Legacy method for backward compatibility."""
         semaphore = asyncio.Semaphore(1)
-        return await self._fetch_single_ultra_fast(session, url, semaphore)
+        result = await self._fetch_single_ultra_fast(session, url, semaphore)
+        # Convert new format (url, content_hash, failure_type) to old format (url, content_hash)
+        return result[0], result[1]
 
     def _extract_main_content(self, html_content: str) -> Optional[str]:
         """Legacy method for backward compatibility."""
@@ -1006,6 +1018,13 @@ class ContentDetector(BaseDetector):
                 failed = len(batch_urls) - successful
                 batch_success_rate = successful / len(batch_urls) if batch_urls else 0
                 
+                # Extract rate-limiting failures (these should affect concurrency)
+                rate_limit_failures = batch_hashes.pop("_rate_limit_failures", 0)
+                total_failures = batch_hashes.pop("_total_failures", failed)
+                
+                # Calculate rate-limiting success rate (excluding 404s and other client errors)
+                rate_limit_success_rate = (len(batch_urls) - rate_limit_failures) / len(batch_urls) if batch_urls else 0
+                
                 print(f"  Batch completed in {batch_time:.2f}s - Success: {successful}, Failed: {failed}")
                 
                 # Update content hashes
@@ -1019,8 +1038,8 @@ class ContentDetector(BaseDetector):
                 self._save_progress(content_hashes, list(content_hashes.keys()), urls)
                 
                 # Check for IP-level rate limiting from previous runs
-                if self._is_ip_level_rate_limited(batch_success_rate, step + 1):
-                    print(f"  🚨 IP-LEVEL RATE LIMITING FROM PREVIOUS RUN DETECTED (step {step + 1}, success rate: {batch_success_rate:.1%})")
+                if self._is_ip_level_rate_limited(rate_limit_success_rate, step + 1):
+                    print(f"  🚨 IP-LEVEL RATE LIMITING FROM PREVIOUS RUN DETECTED (step {step + 1}, rate-limit success rate: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%})")
                     session = await self._handle_ip_level_rate_limiting(session)
                     
                     # Reset to very conservative settings
@@ -1034,8 +1053,8 @@ class ContentDetector(BaseDetector):
                     continue
                 
                 # Check for immediate rate limiting (first few batches)
-                if self._is_immediately_rate_limited(batch_success_rate, step + 1):
-                    print(f"  🚨 IMMEDIATE RATE LIMITING DETECTED (step {step + 1}, success rate: {batch_success_rate:.1%})")
+                if self._is_immediately_rate_limited(rate_limit_success_rate, step + 1):
+                    print(f"  🚨 IMMEDIATE RATE LIMITING DETECTED (step {step + 1}, rate-limit success rate: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%})")
                     print(f"  📉 Aggressive response: Reducing to 1 concurrent request and pausing...")
                     
                     # Very aggressive response for immediate rate limiting
@@ -1047,9 +1066,9 @@ class ContentDetector(BaseDetector):
                     continue
                 
                 # Check for rate limiting
-                if self._is_429_rate_limited(batch_success_rate, consecutive_failures):
+                if self._is_429_rate_limited(rate_limit_success_rate, consecutive_failures):
                     consecutive_failures += 1
-                    print(f"  ⚠️  Rate limiting detected (success rate: {batch_success_rate:.1%}) - Pausing and reducing concurrency...")
+                    print(f"  ⚠️  Rate limiting detected (rate-limit success rate: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%}) - Pausing and reducing concurrency...")
                     
                     # Very aggressive backoff for rate limiting
                     new_concurrency = max(1, int(current_concurrency * 0.3))  # Reduce by 70%
@@ -1064,9 +1083,9 @@ class ContentDetector(BaseDetector):
                     consecutive_failures = 0  # Reset counter if success rate improves
                 
                 # Check for persistent low success rates (like 45%)
-                if self._is_persistent_low_success(batch_success_rate, consecutive_low_success):
+                if self._is_persistent_low_success(rate_limit_success_rate, consecutive_low_success):
                     consecutive_low_success += 1
-                    print(f"  🚨 PERSISTENT LOW SUCCESS RATE DETECTED ({batch_success_rate:.1%}) - Consecutive low success: {consecutive_low_success}")
+                    print(f"  🚨 PERSISTENT LOW SUCCESS RATE DETECTED (rate-limit: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%}) - Consecutive low success: {consecutive_low_success}")
                     print(f"  📉 This suggests rate limiting - Reducing concurrency and pausing...")
                     
                     # Aggressive backoff for persistent low success
@@ -1082,7 +1101,7 @@ class ContentDetector(BaseDetector):
                     consecutive_low_success = 0  # Reset counter if success rate improves
                 
                 # Check for blocking
-                if self._is_permanently_blocked(batch_success_rate, consecutive_failures):
+                if self._is_permanently_blocked(rate_limit_success_rate, consecutive_failures):
                     consecutive_blocking_events += 1
                     print(f"  🚨 Detected persistent blocking/rate limiting - Rotating session and pausing...")
                     print(f"  📊 Blocking event #{consecutive_blocking_events}")
@@ -1098,10 +1117,10 @@ class ContentDetector(BaseDetector):
                 else:
                     consecutive_failures = 0
                 
-                # Adjust concurrency based on success rate
-                if batch_success_rate >= 0.9:  # Require 90%+ success rate for increases
+                # Adjust concurrency based on rate-limiting success rate (excluding 404s and client errors)
+                if rate_limit_success_rate >= 0.9:  # Require 90%+ rate-limiting success rate for increases
                     # Only increase if we've had a successful start or this is a very good batch
-                    if successful_start or batch_success_rate >= 0.95:
+                    if successful_start or rate_limit_success_rate >= 0.95:
                         # Ensure we actually increase from 1 to at least 2
                         if current_concurrency == 1:
                             new_concurrency = 2
@@ -1112,18 +1131,18 @@ class ContentDetector(BaseDetector):
                             new_concurrency = min(self.ramp_target_concurrency, int(current_concurrency * 1.1))
                         
                         if new_concurrency > current_concurrency:
-                            print(f"  ✅ Success rate: {batch_success_rate:.1%} - Increasing concurrency to {new_concurrency}")
+                            print(f"  ✅ Rate-limit success rate: {rate_limit_success_rate:.1%} (overall: {batch_success_rate:.1%}) - Increasing concurrency to {new_concurrency}")
                             current_concurrency = new_concurrency
                         else:
-                            print(f"  ✅ Success rate: {batch_success_rate:.1%} - Concurrency already at maximum ({current_concurrency})")
+                            print(f"  ✅ Rate-limit success rate: {rate_limit_success_rate:.1%} (overall: {batch_success_rate:.1%}) - Concurrency already at maximum ({current_concurrency})")
                     else:
                         # Mark as successful start but don't increase yet
                         successful_start = True
-                        print(f"  ✅ Good start (success rate: {batch_success_rate:.1%}) - Keeping concurrency at {current_concurrency}")
-                elif batch_success_rate < 0.5:
+                        print(f"  ✅ Good start (rate-limit success rate: {rate_limit_success_rate:.1%}, overall: {batch_success_rate:.1%}) - Keeping concurrency at {current_concurrency}")
+                elif rate_limit_success_rate < 0.5:
                     consecutive_failures += 1
                     new_concurrency = max(1, int(current_concurrency * 0.7))  # More aggressive decrease
-                    print(f"  ⚠️  Success rate: {batch_success_rate:.1%} - Decreasing concurrency to {new_concurrency}")
+                    print(f"  ⚠️  Rate-limit success rate: {rate_limit_success_rate:.1%} (overall: {batch_success_rate:.1%}) - Decreasing concurrency to {new_concurrency}")
                     current_concurrency = new_concurrency
                     successful_start = False  # Reset successful start flag
                 
