@@ -161,9 +161,10 @@ class BaselineManager:
             if not baseline_files:
                 return None
             
-            # Sort by baseline date (not file modification time) and get the most recent
+            # Sort by baseline date first, then by file modification time for tie-breaking
             latest_baseline = None
             latest_date = None
+            latest_file_time = None
             
             for baseline_file in baseline_files:
                 try:
@@ -171,8 +172,15 @@ class BaselineManager:
                         baseline_data = json.load(f)
                     
                     baseline_date = baseline_data.get("baseline_date")
-                    if baseline_date and (latest_date is None or baseline_date > latest_date):
+                    file_time = baseline_file.stat().st_mtime
+                    
+                    # If this baseline has a newer date, or same date but newer file time
+                    if (baseline_date and 
+                        (latest_date is None or 
+                         baseline_date > latest_date or 
+                         (baseline_date == latest_date and file_time > latest_file_time))):
                         latest_date = baseline_date
+                        latest_file_time = file_time
                         latest_baseline = baseline_data
                         
                 except Exception as e:

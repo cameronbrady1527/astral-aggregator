@@ -185,100 +185,184 @@ async def trigger_info() -> Dict[str, Any]:
 
 
 @router.post("/trigger/{site_id}")
-async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
+async def trigger_site_detection(site_id: str, use_simplified: bool = Query(default=True, description="Use simplified change detector for better performance")) -> Dict[str, Any]:
     """
     Trigger change detection for a specific site with baseline evolution.
     
     This endpoint starts the change detection process and returns immediately.
     The system will automatically update baselines when changes are detected.
     Use the progress endpoint to monitor the detection status.
+    
+    Parameters:
+    - use_simplified: If True, uses the new simplified change detector for better performance
     """
     try:
-        # Get change detector and baseline manager from dependencies
-        from ..dependencies import get_change_detector_with_baseline_manager, is_baseline_evolution_enabled
-        
-        change_detector, baseline_manager = get_change_detector_with_baseline_manager()
-        baseline_evolution_enabled = is_baseline_evolution_enabled()
-        
-        # Update detection status using the global function
-        def update_local_detection_status(current_method: str = "", progress: int = 0, 
-                                        message: str = "", is_running: bool = True):
-            update_detection_status(
-                current_method=current_method,
-                progress=progress,
-                message=message,
-                is_running=is_running,
-                total_pages=0,
-                credits_used=0
-            )
-        
-        # Run detection with progress updates
-        async def run_detection_with_progress():
-            try:
-                site_config = change_detector.config_manager.get_site(site_id)
-                
-                # Check if baseline exists
-                current_baseline = baseline_manager.get_latest_baseline(site_id)
-                baseline_status = "existing" if current_baseline else "creating_initial"
-                
-                # Update status for each method
-                for i, method in enumerate(site_config.detection_methods):
+        if use_simplified:
+            # Use simplified change detector
+            from ..utils.simplified_change_detector import SimplifiedChangeDetector
+            
+            detector = SimplifiedChangeDetector()
+            
+            # Update detection status using the global function
+            def update_local_detection_status(progress: int = 0, message: str = "", is_running: bool = True):
+                update_detection_status(
+                    current_method="simplified",
+                    progress=progress,
+                    message=message,
+                    is_running=is_running,
+                    total_pages=0,
+                    credits_used=0
+                )
+            
+            # Run detection with progress updates
+            async def run_simplified_detection():
+                try:
+                    update_local_detection_status(progress=25, message="Fetching sitemap URLs...")
+                    await asyncio.sleep(0.1)
+                    
+                    update_local_detection_status(progress=50, message="Calculating content hashes...")
+                    await asyncio.sleep(0.1)
+                    
+                    # Run the actual detection
+                    results = await detector.detect_changes_for_site(site_id)
+                    
+                    # Update final status
+                    baseline_updated = results.get("baseline_updated", False)
+                    baseline_file = results.get("baseline_file")
+                    changes_file = results.get("changes_file")
+                    
+                    final_message = "Simplified detection completed successfully"
+                    if baseline_updated:
+                        final_message += f" - Baseline updated: {baseline_file}"
+                        if changes_file:
+                            final_message += f" - Changes saved: {changes_file}"
+                    elif baseline_file:
+                        final_message += f" - Initial baseline created: {baseline_file}"
+                    
                     update_local_detection_status(
-                        current_method=method,
-                        progress=int((i / len(site_config.detection_methods)) * 50),
-                        message=f"Running {method} detection (baseline: {baseline_status})..."
+                        progress=100,
+                        message=final_message,
+                        is_running=False
                     )
                     
-                    # Add a small delay to allow progress updates
-                    await asyncio.sleep(0.1)
-                
-                # Run the actual detection
-                results = await change_detector.detect_changes_for_site(site_id)
-                
-                # Update final status with baseline information
-                baseline_updated = results.get("baseline_updated", False)
-                baseline_file = results.get("baseline_file")
-                
-                final_message = "Detection completed successfully"
-                if baseline_updated:
-                    final_message += f" - Baseline updated: {baseline_file}"
-                elif baseline_file:
-                    final_message += f" - Initial baseline created: {baseline_file}"
-                
-                update_local_detection_status(
-                    progress=100,
-                    message=final_message,
-                    is_running=False
+                    return results
+                except Exception as e:
+                    update_local_detection_status(
+                        progress=0,
+                        message=f"Simplified detection failed: {str(e)}",
+                        is_running=False
+                    )
+                    raise e
+            
+            # Start detection in background
+            asyncio.create_task(run_simplified_detection())
+            
+            # Get baseline information for response
+            current_baseline = detector.baseline_manager.get_latest_baseline(site_id)
+            baseline_info = {
+                "baseline_evolution_enabled": True,
+                "current_baseline_date": current_baseline.get("baseline_date") if current_baseline else None,
+                "current_baseline_urls": current_baseline.get("total_urls", 0) if current_baseline else 0,
+                "baseline_updated": False,  # Will be updated when detection completes
+                "detector_type": "simplified"
+            }
+            
+            return {
+                "status": "started",
+                "message": f"Simplified change detection started for {site_id}",
+                "baseline_info": baseline_info,
+                "progress_url": "/api/listeners/progress",
+                "detector_type": "simplified",
+                "note": "Using high-performance simplified change detector"
+            }
+        else:
+            # Use original change detector
+            from ..dependencies import get_change_detector_with_baseline_manager, is_baseline_evolution_enabled
+            
+            change_detector, baseline_manager = get_change_detector_with_baseline_manager()
+            baseline_evolution_enabled = is_baseline_evolution_enabled()
+            
+            # Update detection status using the global function
+            def update_local_detection_status(current_method: str = "", progress: int = 0, 
+                                            message: str = "", is_running: bool = True):
+                update_detection_status(
+                    current_method=current_method,
+                    progress=progress,
+                    message=message,
+                    is_running=is_running,
+                    total_pages=0,
+                    credits_used=0
                 )
-                
-                return results
-            except Exception as e:
-                update_local_detection_status(
-                    progress=0,
-                    message=f"Detection failed: {str(e)}",
-                    is_running=False
-                )
-                raise e
-        
-        # Start detection in background
-        asyncio.create_task(run_detection_with_progress())
-        
-        # Get baseline information for response
-        current_baseline = baseline_manager.get_latest_baseline(site_id)
-        baseline_info = {
-            "baseline_evolution_enabled": baseline_evolution_enabled,
-            "current_baseline_date": current_baseline.get("baseline_date") if current_baseline else None,
-            "current_baseline_urls": len(current_baseline.get("sitemap_state", {}).get("urls", [])) if current_baseline else 0,
-            "baseline_updated": False,  # Will be updated when detection completes
-        }
-        
-        return {
-            "status": "started",
-            "message": f"Change detection started for {site_id}",
-            "baseline_info": baseline_info,
-            "progress_url": "/api/listeners/progress",
-            "note": "Use GET /api/listeners/progress to monitor progress and baseline updates"
-        }
+            
+            # Run detection with progress updates
+            async def run_detection_with_progress():
+                try:
+                    site_config = change_detector.config_manager.get_site(site_id)
+                    
+                    # Check if baseline exists
+                    current_baseline = baseline_manager.get_latest_baseline(site_id)
+                    baseline_status = "existing" if current_baseline else "creating_initial"
+                    
+                    # Update status for each method
+                    for i, method in enumerate(site_config.detection_methods):
+                        update_local_detection_status(
+                            current_method=method,
+                            progress=int((i / len(site_config.detection_methods)) * 50),
+                            message=f"Running {method} detection (baseline: {baseline_status})..."
+                        )
+                        
+                        # Add a small delay to allow progress updates
+                        await asyncio.sleep(0.1)
+                    
+                    # Run the actual detection
+                    results = await change_detector.detect_changes_for_site(site_id)
+                    
+                    # Update final status with baseline information
+                    baseline_updated = results.get("baseline_updated", False)
+                    baseline_file = results.get("baseline_file")
+                    
+                    final_message = "Detection completed successfully"
+                    if baseline_updated:
+                        final_message += f" - Baseline updated: {baseline_file}"
+                    elif baseline_file:
+                        final_message += f" - Initial baseline created: {baseline_file}"
+                    
+                    update_local_detection_status(
+                        progress=100,
+                        message=final_message,
+                        is_running=False
+                    )
+                    
+                    return results
+                except Exception as e:
+                    update_local_detection_status(
+                        progress=0,
+                        message=f"Detection failed: {str(e)}",
+                        is_running=False
+                    )
+                    raise e
+            
+            # Start detection in background
+            asyncio.create_task(run_detection_with_progress())
+            
+            # Get baseline information for response
+            current_baseline = baseline_manager.get_latest_baseline(site_id)
+            baseline_info = {
+                "baseline_evolution_enabled": baseline_evolution_enabled,
+                "current_baseline_date": current_baseline.get("baseline_date") if current_baseline else None,
+                "current_baseline_urls": len(current_baseline.get("sitemap_state", {}).get("urls", [])) if current_baseline else 0,
+                "baseline_updated": False,  # Will be updated when detection completes
+                "detector_type": "original"
+            }
+            
+            return {
+                "status": "started",
+                "message": f"Change detection started for {site_id}",
+                "baseline_info": baseline_info,
+                "progress_url": "/api/listeners/progress",
+                "detector_type": "original",
+                "note": "Use GET /api/listeners/progress to monitor progress and baseline updates"
+            }
     except ValueError as e:
         update_local_detection_status(
             progress=0,
@@ -296,19 +380,53 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
 
 
 @router.post("/trigger/all")
-async def trigger_all_sites_detection() -> Dict[str, Any]:
+async def trigger_all_sites_detection(use_simplified: bool = Query(default=True, description="Use simplified change detector for better performance")) -> Dict[str, Any]:
     """Manually trigger change detection for all active sites."""
     try:
-        change_detector = get_change_detector()
-        if change_detector is None:
-            raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
-        
-        results = await change_detector.detect_changes_for_all_sites()
-        return {
-            "status": "success",
-            "message": "Change detection completed for all sites",
-            "results": results
-        }
+        if use_simplified:
+            # Use simplified change detector for all sites
+            from ..utils.simplified_change_detector import SimplifiedChangeDetector
+            
+            detector = SimplifiedChangeDetector()
+            sites = detector.config_manager.list_sites()
+            active_sites = [site for site in sites if site.get("is_active", True)]
+            
+            results = {}
+            for site in active_sites:
+                site_id = site["site_id"]
+                try:
+                    site_result = await detector.detect_changes_for_site(site_id)
+                    results[site_id] = {
+                        "status": "success",
+                        "baseline_updated": site_result.get("baseline_updated", False),
+                        "baseline_file": site_result.get("baseline_file"),
+                        "changes_file": site_result.get("changes_file")
+                    }
+                except Exception as e:
+                    results[site_id] = {
+                        "status": "error",
+                        "error": str(e)
+                    }
+            
+            return {
+                "status": "success",
+                "message": f"Simplified change detection completed for {len(active_sites)} sites",
+                "detector_type": "simplified",
+                "results": results
+            }
+        else:
+            # Use original change detector
+            change_detector = get_change_detector()
+            if change_detector is None:
+                raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
+            
+            results = await change_detector.detect_changes_for_all_sites()
+            return {
+                "status": "success",
+                "message": "Change detection completed for all sites",
+                "detector_type": "original",
+                "results": results
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
 
@@ -378,17 +496,59 @@ async def get_site_status(site_id: str) -> Dict[str, Any]:
 @router.get("/changes/{site_id}")
 async def get_site_changes(
     site_id: str,
-    limit: int = Query(default=10, ge=1, le=100, description="Number of recent changes to return")
+    limit: int = Query(default=10, ge=1, le=100, description="Number of recent changes to return"),
+    use_simplified: bool = Query(default=True, description="Get changes from simplified detector")
 ) -> Dict[str, Any]:
     """Get recent changes for a specific site."""
     try:
-        change_detector = get_change_detector()
-        if change_detector is None:
-            raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
-        
-        site_config = change_detector.config_manager.get_site(site_id)
-        if not site_config:
-            raise HTTPException(status_code=404, detail=f"Site '{site_id}' not found")
+        if use_simplified:
+            # Get changes from simplified detector
+            from ..utils.simplified_change_detector import SimplifiedChangeDetector
+            from pathlib import Path
+            import json
+            
+            detector = SimplifiedChangeDetector()
+            changes_dir = Path("changes")
+            
+            if not changes_dir.exists():
+                return {
+                    "site_id": site_id,
+                    "changes": [],
+                    "message": "No changes directory found",
+                    "source": "simplified"
+                }
+            
+            # Find change files for this site
+            site_name = detector.config_manager.get_site(site_id).name if detector.config_manager.get_site(site_id) else site_id
+            change_files = list(changes_dir.glob(f"{site_name}_*_changes.json"))
+            change_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            
+            all_changes = []
+            for file_path in change_files[:limit]:
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        changes = data.get("changes", [])
+                        all_changes.extend(changes)
+                except Exception as e:
+                    print(f"Error reading change file {file_path}: {e}")
+            
+            return {
+                "site_id": site_id,
+                "total_changes": len(all_changes),
+                "changes": all_changes[:limit],
+                "files_checked": len(change_files),
+                "source": "simplified"
+            }
+        else:
+            # Get changes from original detector
+            change_detector = get_change_detector()
+            if change_detector is None:
+                raise HTTPException(status_code=503, detail="System is initializing. Please try again.")
+            
+            site_config = change_detector.config_manager.get_site(site_id)
+            if not site_config:
+                raise HTTPException(status_code=404, detail=f"Site '{site_id}' not found")
         
         change_files = change_detector.writer.list_change_files(site_config.name)
         # Filter out state files (files with "state" in the name)
@@ -448,72 +608,128 @@ async def get_site_changes(
 
 @router.get("/changes")
 async def get_all_changes(
-    limit: int = Query(default=20, ge=1, le=100, description="Number of recent changes to return")
+    limit: int = Query(default=20, ge=1, le=100, description="Number of recent changes to return"),
+    use_simplified: bool = Query(default=True, description="Get changes from simplified detector")
 ) -> Dict[str, Any]:
     """Get recent changes across all sites."""
     try:
-        change_detector = get_change_detector()
-        if change_detector is None:
-            return {
-                "recent_changes": [],
-                "total_sites": 0,
-                "status": "initializing"
-            }
-        
-        all_changes = []
-        sites = change_detector.list_sites()
-        
-        for site in sites:
-            site_changes = change_detector.writer.list_change_files(site["name"])
-            # Filter out state files (files with "state" in the name)
-            change_files = [f for f in site_changes if "state" not in f.lower()]
+        if use_simplified:
+            # Get changes from simplified detector
+            from ..utils.simplified_change_detector import SimplifiedChangeDetector
+            from pathlib import Path
+            import json
             
-            for file_path in change_files[:5]:
-                try:
-                    change_data = change_detector.writer.read_json_file(file_path)
-                    detection_time = change_data.get("metadata", {}).get("detection_time")
-                    
-                    # Only include files with valid detection times
-                    if detection_time:
-                        # Get summary from the changes data
-                        changes_data = change_data.get("changes", {})
+            detector = SimplifiedChangeDetector()
+            changes_dir = Path("changes")
+            
+            if not changes_dir.exists():
+                return {
+                    "recent_changes": [],
+                    "total_sites": 0,
+                    "status": "no_changes_directory",
+                    "source": "simplified"
+                }
+            
+            all_changes = []
+            sites = detector.config_manager.list_sites()
+            
+            for site in sites:
+                site_name = site["name"]
+                change_files = list(changes_dir.glob(f"{site_name}_*_changes.json"))
+                change_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+                
+                for file_path in change_files[:5]:
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            detection_time = data.get("metadata", {}).get("detection_time")
+                            
+                            if detection_time:
+                                summary = data.get("metadata", {}).get("summary", {})
+                                all_changes.append({
+                                    "site_id": site["site_id"],
+                                    "site_name": site_name,
+                                    "file_path": str(file_path),
+                                    "detection_time": detection_time,
+                                    "summary": summary
+                                })
+                    except Exception as e:
+                        print(f"Error reading change file {file_path}: {e}")
+                        continue
+            
+            all_changes.sort(key=lambda x: x.get("detection_time", ""), reverse=True)
+            
+            return {
+                "recent_changes": all_changes[:limit],
+                "total_sites": len(sites),
+                "source": "simplified"
+            }
+        else:
+            # Use original change detector
+            change_detector = get_change_detector()
+            if change_detector is None:
+                return {
+                    "recent_changes": [],
+                    "total_sites": 0,
+                    "status": "initializing",
+                    "source": "original"
+                }
+            
+            all_changes = []
+            sites = change_detector.list_sites()
+            
+            for site in sites:
+                site_changes = change_detector.writer.list_change_files(site["name"])
+                # Filter out state files (files with "state" in the name)
+                change_files = [f for f in site_changes if "state" not in f.lower()]
+                
+                for file_path in change_files[:5]:
+                    try:
+                        change_data = change_detector.writer.read_json_file(file_path)
+                        detection_time = change_data.get("metadata", {}).get("detection_time")
                         
-                        # Check if there's a direct summary (for older format)
-                        summary = changes_data.get("summary", {})
-                        
-                        # If no direct summary, check methods for summary
-                        if not summary and "methods" in changes_data:
-                            combined_summary = {
-                                "total_changes": 0,
-                                "new_pages": 0,
-                                "modified_pages": 0,
-                                "deleted_pages": 0
-                            }
-                            for method_name, method_data in changes_data["methods"].items():
-                                method_summary = method_data.get("summary", {})
-                                combined_summary["total_changes"] += method_summary.get("total_changes", 0)
-                                combined_summary["new_pages"] += method_summary.get("new_pages", 0)
-                                combined_summary["modified_pages"] += method_summary.get("modified_pages", 0)
-                                combined_summary["deleted_pages"] += method_summary.get("deleted_pages", 0)
-                            summary = combined_summary
-                        
-                        all_changes.append({
-                            "site_id": site["site_id"],
-                            "site_name": site["name"],
-                            "file_path": file_path,
-                            "detection_time": detection_time,
-                            "summary": summary
-                        })
-                except Exception as e:
-                    print(f"Error processing change file {file_path}: {e}")
-                    continue
-        
-        all_changes.sort(key=lambda x: x.get("detection_time", ""), reverse=True)
-        
-        return {
-            "recent_changes": all_changes[:limit],
-            "total_sites": len(sites)
-        }
+                        # Only include files with valid detection times
+                        if detection_time:
+                            # Get summary from the changes data
+                            changes_data = change_data.get("changes", {})
+                            
+                            # Check if there's a direct summary (for older format)
+                            summary = changes_data.get("summary", {})
+                            
+                            # If no direct summary, check methods for summary
+                            if not summary and "methods" in changes_data:
+                                combined_summary = {
+                                    "total_changes": 0,
+                                    "new_pages": 0,
+                                    "modified_pages": 0,
+                                    "deleted_pages": 0
+                                }
+                                for method_name, method_data in changes_data["methods"].items():
+                                    method_summary = method_data.get("summary", {})
+                                    combined_summary["total_changes"] += method_summary.get("total_changes", 0)
+                                    combined_summary["new_pages"] += method_summary.get("new_pages", 0)
+                                    combined_summary["modified_pages"] += method_summary.get("modified_pages", 0)
+                                    combined_summary["deleted_pages"] += method_summary.get("deleted_pages", 0)
+                                summary = combined_summary
+                            
+                            all_changes.append({
+                                "site_id": site["site_id"],
+                                "site_name": site["name"],
+                                "file_path": file_path,
+                                "detection_time": detection_time,
+                                "summary": summary
+                            })
+                    except Exception as e:
+                        print(f"Error processing change file {file_path}: {e}")
+                        continue
+            
+            all_changes.sort(key=lambda x: x.get("detection_time", ""), reverse=True)
+            
+            return {
+                "recent_changes": all_changes[:limit],
+                "total_sites": len(sites),
+                "source": "original"
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get all changes: {str(e)}")
 

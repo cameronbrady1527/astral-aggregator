@@ -26,6 +26,7 @@ app = FastAPI(title="Astral API", description="Website Change Detection System")
 # Global flag to track if app is fully initialized
 app_initialized = False
 routers_loaded = False
+tor_service_initialized = False
 
 # Add startup logging
 @app.on_event("startup")
@@ -47,10 +48,11 @@ async def startup_event():
     # Try to include routers (but don't fail if they don't work)
     try:
         print("Attempting to load routers...")
-        from app.routers import listeners, dashboard
+        from app.routers import listeners, dashboard, simplified_trigger
         app.include_router(listeners.router)
         app.include_router(dashboard.router)
-        print("✅ Listeners and dashboard routers included successfully")
+        app.include_router(simplified_trigger.router)
+        print("✅ Listeners, dashboard, and simplified trigger routers included successfully")
         routers_loaded = True
     except ImportError as e:
         print(f"⚠️ Router import failed: {e}")
@@ -69,8 +71,42 @@ async def startup_event():
                 "note": "Routers not loaded"
             }
     
+    # Initialize Tor service if proxy is enabled
+    try:
+        if os.getenv('PROXY_PROVIDER') == 'tor':
+            print("🔧 Initializing Tor service...")
+            from app.utils.tor_service import initialize_tor_service
+            tor_service = await initialize_tor_service()
+            if tor_service:
+                print("✅ Tor service initialized successfully")
+                global tor_service_initialized
+                tor_service_initialized = True
+            else:
+                print("⚠️  Tor service initialization failed")
+        else:
+            print("ℹ️  Tor service not required (proxy not enabled)")
+    except Exception as e:
+        print(f"⚠️  Tor service initialization error: {e}")
+    
     print("✅ Astral API startup complete!")
     app_initialized = True
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up resources on shutdown."""
+    print("🛑 Astral API shutting down...")
+    
+    # Shutdown Tor service
+    try:
+        if tor_service_initialized:
+            print("🛑 Shutting down Tor service...")
+            from app.utils.tor_service import shutdown_tor_service
+            await shutdown_tor_service()
+            print("✅ Tor service shutdown complete")
+    except Exception as e:
+        print(f"⚠️  Tor service shutdown error: {e}")
+    
+    print("✅ Astral API shutdown complete!")
 
 @app.get("/ping")
 async def ping():
@@ -87,7 +123,8 @@ async def health_check():
         "service": "astral-api",
         "version": "0.0.1",
         "initialized": app_initialized,
-        "routers_loaded": routers_loaded
+        "routers_loaded": routers_loaded,
+        "tor_service": "running" if tor_service_initialized else "not_required"
     }
 
 @app.get("/")

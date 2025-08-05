@@ -46,6 +46,83 @@ class ChangeDetector:
         self.baseline_manager = BaselineManager()
         self.firecrawl_config = self.config_manager.get_firecrawl_config()
     
+    def _preserve_failed_urls_in_baseline(self, site_name: str, baseline: Dict[str, Any]):
+        """Preserve failed URLs from progress files in the baseline before deleting them."""
+        try:
+            progress_dir = "progress"
+            if not os.path.exists(progress_dir):
+                return
+            
+            # Create safe site name (same logic as in ContentDetector)
+            safe_site_name = re.sub(r'[^a-zA-Z0-9]', '_', site_name)
+            
+            # Look for progress file
+            simple_progress_file = os.path.join(progress_dir, f"{safe_site_name}_progress.json")
+            if os.path.exists(simple_progress_file):
+                with open(simple_progress_file, 'r') as f:
+                    progress_data = json.load(f)
+                
+                # Extract failed URLs from progress file
+                failed_urls = progress_data.get('failed_urls', {})
+                if failed_urls:
+                    # Add failed URLs to baseline
+                    baseline['failed_urls'] = failed_urls
+                    failed_count = sum(len(urls) for urls in failed_urls.values())
+                    print(f"💾 Preserved {failed_count} failed URLs in baseline")
+                    
+                    # Add failed URL metadata
+                    baseline['failed_urls_metadata'] = {
+                        'preserved_at': datetime.now().isoformat(),
+                        'total_failed_urls': failed_count,
+                        'failure_types': list(failed_urls.keys())
+                    }
+                    
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to preserve failed URLs for {site_name}: {e}")
+
+    def _is_processing_complete(self, site_name: str, current_state: Dict[str, Any]) -> bool:
+        """Check if processing is complete (all URLs processed successfully)."""
+        # If rate limited, processing is not complete
+        if current_state.get("rate_limited", False):
+            return False
+        
+        # Check if we have a progress file and compare with total URLs
+        try:
+            progress_dir = "progress"
+            if not os.path.exists(progress_dir):
+                return True  # No progress file means no processing was done
+            
+            # Create safe site name
+            safe_site_name = re.sub(r'[^a-zA-Z0-9]', '_', site_name)
+            progress_file = os.path.join(progress_dir, f"{safe_site_name}_progress.json")
+            
+            if not os.path.exists(progress_file):
+                return True  # No progress file means no processing was done
+            
+            # Load progress data
+            import json
+            with open(progress_file, 'r') as f:
+                progress_data = json.load(f)
+            
+            # Get counts
+            urls_processed = len(progress_data.get('urls_processed', []))
+            total_urls = len(progress_data.get('total_urls', []))
+            failed_urls = sum(len(urls) for urls in progress_data.get('failed_urls', {}).values())
+            
+            # Processing is complete if all URLs have been handled (processed + failed)
+            is_complete = (urls_processed + failed_urls) >= total_urls
+            
+            if is_complete:
+                print(f"📊 Processing complete: {urls_processed} processed + {failed_urls} failed = {urls_processed + failed_urls}/{total_urls} URLs")
+            else:
+                print(f"📊 Processing incomplete: {urls_processed} processed + {failed_urls} failed = {urls_processed + failed_urls}/{total_urls} URLs")
+            
+            return is_complete
+            
+        except Exception as e:
+            print(f"⚠️ Warning: Error checking processing completion for {site_name}: {e}")
+            return False  # Assume incomplete if we can't determine
+
     def _delete_progress_files(self, site_name: str):
         """Delete progress files for a site after baseline creation."""
         try:
@@ -239,8 +316,17 @@ class ChangeDetector:
             # Still write current state for historical tracking
             self.writer.write_site_state(site_config.name, current_state)
             
-            # Delete progress files after successful baseline creation
-            self._delete_progress_files(site_config.name)
+            # Preserve failed URLs from progress files in the baseline
+            self._preserve_failed_urls_in_baseline(site_config.name, initial_baseline)
+            
+            # Check if processing is complete
+            is_complete = self._is_processing_complete(site_config.name, current_state)
+            
+            if is_complete:
+                print(f"✅ Processing complete - deleting progress files")
+                self._delete_progress_files(site_config.name)
+            else:
+                print(f"⚠️ Processing incomplete - keeping progress files for next run")
             
             return {
                 "detection_method": method,
@@ -335,8 +421,17 @@ class ChangeDetector:
             elif validation_result["warnings"]:
                 print(f"⚠️ Baseline merge warnings: {validation_result['warnings']}")
             
-            # Delete progress files after successful baseline update
-            self._delete_progress_files(site_config.name)
+            # Preserve failed URLs from progress files in the baseline
+            self._preserve_failed_urls_in_baseline(site_config.name, new_baseline)
+            
+            # Check if processing is complete
+            is_complete = self._is_processing_complete(site_config.name, current_state)
+            
+            if is_complete:
+                print(f"✅ Processing complete - deleting progress files")
+                self._delete_progress_files(site_config.name)
+            else:
+                print(f"⚠️ Processing incomplete - keeping progress files for next run")
         
         # Still write current state for historical tracking
         self.writer.write_site_state(site_config.name, current_state)

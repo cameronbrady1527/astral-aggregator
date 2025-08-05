@@ -27,6 +27,7 @@ from bs4 import BeautifulSoup
 
 # Internal -----
 from .base_detector import BaseDetector, ChangeResult
+from ..utils.proxy_manager import ProxyManager, create_proxy_manager_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,30 @@ class ContentDetector(BaseDetector):
     def __init__(self, site_config: Any):
         super().__init__(site_config)
         
+        # Initialize session management first
+        self._session_lock = asyncio.Lock()  # Add lock for thread-safe session management
+        
+        # Initialize session-related attributes
+        self._session = None
+        self._connector = None
+        self._ssl_context = None
+        self._current_user_agent = None
+        self._session_creation_time = None
+        self._request_count = 0
+        
+        # User agent pool for rotation
+        self.user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0',
+            'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+            'Mozilla/5.0 (compatible; Bingbot/2.0; +http://www.bing.com/bingbot.htm)',
+            'Mozilla/5.0 (compatible; ContentDetector/1.0; +https://github.com/astral/aggregator)'
+        ]
+        
         # Sitemap configuration
         self.sitemap_url = getattr(site_config, 'sitemap_url', None)
         if not self.sitemap_url:
@@ -69,10 +94,10 @@ class ContentDetector(BaseDetector):
         self.timeout = getattr(site_config, 'content_timeout', 10)
         
         # Ultra-fast optimization settings with adaptive rate limiting
-        self.max_concurrent = getattr(site_config, 'max_concurrent_requests', 50)
-        self.connection_pool_size = getattr(site_config, 'connection_pool_size', 100)
-        self.batch_size = getattr(site_config, 'batch_size', 500)
-        self.ultra_fast_timeout = getattr(site_config, 'ultra_fast_timeout', 8)
+        self.max_concurrent = getattr(site_config, 'max_concurrent_requests', 20)  # More conservative
+        self.connection_pool_size = getattr(site_config, 'connection_pool_size', 50)  # Smaller pool
+        self.batch_size = getattr(site_config, 'batch_size', 100)  # Smaller batches
+        self.ultra_fast_timeout = getattr(site_config, 'ultra_fast_timeout', 15)  # Longer timeout
         
         # Adaptive rate limiting settings
         self.adaptive_enabled = getattr(site_config, 'adaptive_rate_limiting', True)
@@ -84,8 +109,8 @@ class ContentDetector(BaseDetector):
         
         # Progressive concurrency ramping
         self.progressive_ramping = getattr(site_config, 'progressive_ramping', True)
-        self.ramp_start_concurrency = getattr(site_config, 'ramp_start_concurrency', 5)
-        self.ramp_target_concurrency = getattr(site_config, 'ramp_target_concurrency', 50)
+        self.ramp_start_concurrency = getattr(site_config, 'ramp_start_concurrency', 1)  # Start more conservatively
+        self.ramp_target_concurrency = getattr(site_config, 'ramp_target_concurrency', 20)  # Lower target
         self.ramp_batch_size = getattr(site_config, 'ramp_batch_size', 20)  # URLs per ramp step
         
         # Phase 2: IP-level anti-blocking features
@@ -94,42 +119,29 @@ class ContentDetector(BaseDetector):
         self.session_rotation_interval = getattr(site_config, 'session_rotation_interval', 50)  # Rotate every 50 requests
         self.force_session_rotation = getattr(site_config, 'force_session_rotation', False)  # Force rotation on startup
         
-        # User agent pool for rotation
-        self.user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0',
-            'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-            'Mozilla/5.0 (compatible; Bingbot/2.0; +http://www.bing.com/bingbot.htm)',
-            'Mozilla/5.0 (compatible; ContentDetector/1.0; +https://github.com/astral/aggregator)'
-        ]
+        # Phase 3: Residential proxy integration
+        self.proxy_enabled = getattr(site_config, 'proxy_enabled', False)
+        self.proxy_manager = None
         
-        # Initialize session management
-        self._session = None
-        self._connector = None
-        self._ssl_context = None
-        self._current_user_agent = None
-        self._session_creation_time = None
-        self._request_count = 0
-        self._session_lock = asyncio.Lock()  # Add lock for thread-safe session management
+        # Initialize proxy manager if enabled
+        if self.proxy_enabled:
+            asyncio.create_task(self._initialize_proxy_manager())
         
-        # Rate limiting state
-        self._rate_limit_backoff = 0
-        self._consecutive_429s = 0
-        self._last_429_time = None
-        
-        # Server health tracking
+        # Initialize server health tracking
         self.server_health = {
             'current_concurrency': self.min_concurrent,
             'success_rate': 1.0,
             'last_adjustment': datetime.now(),
             'total_requests': 0,
             'successful_requests': 0,
-            'failed_requests': 0
+            'failed_requests': 0,
+            'response_times': []
         }
+        
+        # Rate limiting state
+        self._rate_limit_backoff = 0
+        self._consecutive_429s = 0
+        self._last_429_time = None
         
         # Progress tracking
         self.progress_file = None
@@ -137,6 +149,23 @@ class ContentDetector(BaseDetector):
         
         # Rate limiting tracking
         self._stopped_due_to_rate_limiting = False
+    
+    async def _initialize_proxy_manager(self):
+        """Initialize the proxy manager asynchronously."""
+        try:
+            self.proxy_manager = await create_proxy_manager_from_env()
+            if self.proxy_manager:
+                logger.info(f"✅ Proxy manager initialized: {self.proxy_manager.config.provider.value}")
+            else:
+                logger.warning("⚠️  Proxy manager initialization failed")
+        except Exception as e:
+            logger.error(f"❌ Error initializing proxy manager: {e}")
+            if self.proxy_manager:
+                logger.info(f"Proxy manager initialized with provider: {self.proxy_manager.config.provider.value}")
+            else:
+                logger.warning("Proxy enabled but no valid proxy configuration found")
+        
+
 
     def _guess_sitemap_url(self) -> str:
         """Guess the sitemap URL if not provided."""
@@ -164,28 +193,31 @@ class ContentDetector(BaseDetector):
             # Fetch and hash content with ultra-fast optimization
             content_hashes = await self._fetch_content_hashes_ultra_fast(key_urls)
             
+            # Filter out any special metadata keys from content_hashes
+            clean_content_hashes = {k: v for k, v in content_hashes.items() if not k.startswith('_')}
+            
             # Check if we stopped due to severe rate limiting
             if self._stopped_due_to_rate_limiting:
                 logger.warning(f"Content extraction stopped due to severe rate limiting for {self.site_name}")
-                logger.info(f"Progress preserved: {len(content_hashes)} URLs with content hashes from previous runs")
+                logger.info(f"Progress preserved: {len(clean_content_hashes)} URLs with content hashes from previous runs")
                 return {
                     "detection_method": "content_hash",
                     "site_url": self.site_url,
                     "error": "Severe rate limiting detected - process stopped to avoid further issues",
                     "rate_limited": True,
                     "urls_checked": key_urls,
-                    "content_hashes": content_hashes,  # Keep partial data for debugging
-                    "total_pages": len(content_hashes),
+                    "content_hashes": clean_content_hashes,  # Keep partial data for debugging
+                    "total_pages": len(clean_content_hashes),
                     "captured_at": datetime.now().isoformat(),
-                    "note": f"Content hashes from {len(content_hashes)} URLs from previous successful runs are preserved"
+                    "note": f"Content hashes from {len(clean_content_hashes)} URLs from previous successful runs are preserved"
                 }
             
             return {
                 "detection_method": "content_hash",
                 "site_url": self.site_url,
                 "urls_checked": key_urls,
-                "content_hashes": content_hashes,
-                "total_pages": len(content_hashes),
+                "content_hashes": clean_content_hashes,
+                "total_pages": len(clean_content_hashes),
                 "captured_at": datetime.now().isoformat()
             }
         except Exception as e:
@@ -524,8 +556,18 @@ class ContentDetector(BaseDetector):
                 parsed = urlparse(self.site_url)
                 headers['Referer'] = f"{parsed.scheme}://{parsed.netloc}/"
             
+            # Get proxy connector if proxy is enabled
+            proxy_connector = None
+            if self.proxy_enabled and self.proxy_manager:
+                proxy_connector = await self.proxy_manager.get_proxy_connector()
+                if proxy_connector:
+                    logger.debug("Using residential proxy for session")
+            
+            # Use proxy connector if available, otherwise use default connector
+            connector = proxy_connector or self._connector
+            
             self._session = aiohttp.ClientSession(
-                connector=self._connector,
+                connector=connector,
                 timeout=timeout,
                 headers=headers,
                 # Prevent SSL shutdown issues
@@ -620,16 +662,16 @@ class ContentDetector(BaseDetector):
     
     def _should_stop_due_to_rate_limiting(self, rate_limit_success_rate: float, overall_success_rate: float, consecutive_failures: int) -> bool:
         """Determine if we should stop due to severe rate limiting."""
-        # Stop if rate-limit success rate is extremely low (< 10%)
-        if rate_limit_success_rate < 0.1:
+        # Only stop if rate-limit success rate is extremely low (< 5%) - much more tolerant
+        if rate_limit_success_rate < 0.05:
             return True
         
-        # Stop if overall success rate is very low (< 20%) and we've had multiple failures
-        if overall_success_rate < 0.2 and consecutive_failures >= 2:
+        # Only stop if overall success rate is very low (< 10%) and we've had many failures
+        if overall_success_rate < 0.1 and consecutive_failures >= 5:
             return True
         
-        # Stop if rate-limit success rate is low (< 30%) and we've had many failures
-        if rate_limit_success_rate < 0.3 and consecutive_failures >= 3:
+        # Only stop if rate-limit success rate is extremely low (< 10%) and we've had many failures
+        if rate_limit_success_rate < 0.1 and consecutive_failures >= 5:
             return True
         
         return False
@@ -666,6 +708,7 @@ class ContentDetector(BaseDetector):
         success_count = 0
         failure_count = 0
         rate_limit_failures = 0  # Track only rate-limiting related failures
+        failures_by_type = {}  # Track failures by type for intelligent caching
         
         for i, result in enumerate(results):
             url = urls[i]
@@ -683,13 +726,22 @@ class ContentDetector(BaseDetector):
                     # Track rate-limiting failures separately (these should affect concurrency)
                     if failure_type in ["rate_limited", "forbidden", "timeout", "connection_error"]:
                         rate_limit_failures += 1
-                    # 404s and other client errors should NOT affect concurrency
+                    
+                    # Track failures by type for intelligent caching
+                    if failure_type not in failures_by_type:
+                        failures_by_type[failure_type] = []
+                    failures_by_type[failure_type].append(url)
             else:
                 failure_count += 1
+                # Handle exceptions
+                if "exception" not in failures_by_type:
+                    failures_by_type["exception"] = []
+                failures_by_type["exception"].append(url)
         
         # Store rate limit failures for use in concurrency adjustment
         batch_hashes["_rate_limit_failures"] = rate_limit_failures
         batch_hashes["_total_failures"] = failure_count
+        batch_hashes["_failures"] = failures_by_type
         
         return batch_hashes
 
@@ -981,23 +1033,29 @@ class ContentDetector(BaseDetector):
             if len(self.server_health['response_times']) > 10:
                 self.server_health['response_times'] = self.server_health['response_times'][-10:]
 
-    def _save_progress(self, content_hashes: Dict[str, Dict[str, Any]], urls_processed: List[str], total_urls: List[str]):
-        """Save progress to allow resuming later."""
+    def _save_progress(self, content_hashes: Dict[str, Dict[str, Any]], urls_processed: List[str], total_urls: List[str], failed_urls: Dict[str, List[str]] = None):
+        """Save progress to allow resuming later, including failed URLs to avoid retrying them."""
         try:
             # Ensure progress directory exists
             progress_dir = "progress"
             os.makedirs(progress_dir, exist_ok=True)
             
+            # Initialize failed_urls if not provided
+            if failed_urls is None:
+                failed_urls = {}
+            
             progress_data = {
                 "content_hashes": content_hashes,
                 "urls_processed": urls_processed,
+                "failed_urls": failed_urls,
                 "total_urls": total_urls,
                 "timestamp": datetime.now().isoformat(),
-                "site_url": self.site_url
+                "site_url": self.site_url,
+                "site_name": getattr(self.site_config, 'name', 'unknown')
             }
             
-            # Create simple progress filename based on site
-            safe_site_name = re.sub(r'[^a-zA-Z0-9]', '_', self.site_url)
+            # Create simple progress filename based on site name (not URL) for consistency
+            safe_site_name = re.sub(r'[^a-zA-Z0-9]', '_', getattr(self.site_config, 'name', 'unknown'))
             progress_file = os.path.join(progress_dir, f"{safe_site_name}_progress.json")
             
             # Remove old progress files for this site
@@ -1006,7 +1064,10 @@ class ContentDetector(BaseDetector):
             with open(progress_file, 'w') as f:
                 json.dump(progress_data, f, indent=2)
             
-            print(f"  💾 Progress saved: {len(content_hashes)} URLs processed, {len(urls_processed)}/{len(total_urls)} total")
+            # Filter out any special metadata keys from content_hashes count
+            actual_content_hashes = {k: v for k, v in content_hashes.items() if not k.startswith('_')}
+            failed_count = sum(len(urls) for urls in failed_urls.values())
+            print(f"  💾 Progress saved: {len(actual_content_hashes)} URLs processed, {len(urls_processed)}/{len(total_urls)} total, {failed_count} failed URLs cached")
             
         except Exception as e:
             logger.warning(f"Failed to save progress: {e}")
@@ -1039,14 +1100,23 @@ class ContentDetector(BaseDetector):
             if not os.path.exists(progress_dir):
                 return None
                 
-            safe_site_name = re.sub(r'[^a-zA-Z0-9]', '_', self.site_url)
+            # Use site name (not URL) for consistency with _save_progress
+            safe_site_name = re.sub(r'[^a-zA-Z0-9]', '_', getattr(self.site_config, 'name', 'unknown'))
             
             # Look for the simple progress file first
             simple_progress_file = os.path.join(progress_dir, f"{safe_site_name}_progress.json")
             if os.path.exists(simple_progress_file):
                 with open(simple_progress_file, 'r') as f:
                     progress_data = json.load(f)
-                print(f"  📂 Loaded progress: {len(progress_data['content_hashes'])} URLs already processed")
+                
+                # Handle legacy progress files that don't have failed_urls
+                if 'failed_urls' not in progress_data:
+                    progress_data['failed_urls'] = {}
+                
+                # Filter out any special metadata keys from content_hashes count
+                actual_content_hashes = {k: v for k, v in progress_data['content_hashes'].items() if not k.startswith('_')}
+                failed_count = sum(len(urls) for urls in progress_data['failed_urls'].values())
+                print(f"  📂 Loaded progress: {len(actual_content_hashes)} URLs already processed, {failed_count} failed URLs cached")
                 return progress_data
             
             # Fallback: look for timestamped files
@@ -1061,11 +1131,39 @@ class ContentDetector(BaseDetector):
             with open(os.path.join(progress_dir, latest_file), 'r') as f:
                 progress_data = json.load(f)
             
-            print(f"  📂 Loaded progress: {len(progress_data['content_hashes'])} URLs already processed")
+            # Handle legacy progress files that don't have failed_urls
+            if 'failed_urls' not in progress_data:
+                progress_data['failed_urls'] = {}
+            
+            # Filter out any special metadata keys from content_hashes count
+            actual_content_hashes = {k: v for k, v in progress_data['content_hashes'].items() if not k.startswith('_')}
+            failed_count = sum(len(urls) for urls in progress_data['failed_urls'].values())
+            print(f"  📂 Loaded progress: {len(actual_content_hashes)} URLs already processed, {failed_count} failed URLs cached")
             return progress_data
             
         except Exception as e:
             logger.warning(f"Failed to load progress: {e}")
+            return None
+
+    def _load_failed_urls_from_baseline(self) -> Optional[Dict[str, List[str]]]:
+        """Load failed URLs from the latest baseline."""
+        try:
+            from ..utils.baseline_manager import BaselineManager
+            
+            baseline_manager = BaselineManager()
+            site_name = getattr(self.site_config, 'name', 'unknown')
+            latest_baseline = baseline_manager.get_latest_baseline(site_name)
+            
+            if latest_baseline and 'failed_urls' in latest_baseline:
+                failed_urls = latest_baseline['failed_urls']
+                failed_count = sum(len(urls) for urls in failed_urls.values())
+                print(f"  📂 Loaded {failed_count} failed URLs from baseline")
+                return failed_urls
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Failed to load failed URLs from baseline: {e}")
             return None
 
     async def _fetch_with_progressive_ramping(self, session: aiohttp.ClientSession, urls: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -1077,15 +1175,51 @@ class ContentDetector(BaseDetector):
         if progress_data:
             content_hashes = progress_data.get('content_hashes', {})
             processed_urls = set(progress_data.get('urls_processed', []))
-            # Filter out already processed URLs
-            urls = [url for url in urls if url not in processed_urls]
-            print(f"  🔄 Resuming with {len(urls)} remaining URLs (already processed {len(content_hashes)})")
+            failed_urls = progress_data.get('failed_urls', {})
+            
+            # Create a set of all URLs to skip (processed + permanently failed)
+            skip_urls = set(processed_urls)
+            
+            # Add permanently failed URLs to skip list
+            permanent_failures = set()
+            for failure_type, failed_url_list in failed_urls.items():
+                if failure_type in ['not_found', 'forbidden', 'client_error']:
+                    permanent_failures.update(failed_url_list)
+            
+            skip_urls.update(permanent_failures)
+            
+            # Filter out already processed URLs and permanently failed URLs
+            original_count = len(urls)
+            urls = [url for url in urls if url not in skip_urls]
+            skipped_count = original_count - len(urls)
+            
+            print(f"  🔄 Resuming with {len(urls)} remaining URLs (already processed {len(content_hashes)}, skipped {skipped_count} failed URLs)")
         else:
             content_hashes = {}
             processed_urls = set()
+            failed_urls = {}
+            
+            # If no progress file, try to load failed URLs from baseline
+            baseline_failed_urls = self._load_failed_urls_from_baseline()
+            if baseline_failed_urls:
+                failed_urls.update(baseline_failed_urls)
+                
+                # Add permanently failed URLs from baseline to skip list
+                permanent_failures = set()
+                for failure_type, failed_url_list in baseline_failed_urls.items():
+                    if failure_type in ['not_found', 'forbidden', 'client_error']:
+                        permanent_failures.update(failed_url_list)
+                
+                # Filter out permanently failed URLs from baseline
+                original_count = len(urls)
+                urls = [url for url in urls if url not in permanent_failures]
+                skipped_count = original_count - len(urls)
+                
+                if skipped_count > 0:
+                    print(f"  🔄 Loaded {skipped_count} failed URLs from baseline, skipping them")
         
         current_concurrency = self.ramp_start_concurrency
-        failed_urls = []  # Track failed URLs for retry
+        retryable_failed_urls = []  # Track failed URLs for retry
         consecutive_blocked_batches = 0  # Track consecutive 0% batches
         urls_processed_this_run = []
         
@@ -1147,19 +1281,41 @@ class ContentDetector(BaseDetector):
                     self._stopped_due_to_rate_limiting = True  # Set the flag
                     break
                 
-                # Update content hashes
-                content_hashes.update(batch_hashes)
+                # Update content hashes - only add actual content hashes, not metadata
+                # Filter out any special keys that might have been added
+                actual_content_hashes = {k: v for k, v in batch_hashes.items() if not k.startswith('_')}
+                content_hashes.update(actual_content_hashes)
                 
-                # Track failed URLs for retry
-                failed_batch_urls = [url for url in batch_urls if url not in batch_hashes]
-                failed_urls.extend(failed_batch_urls)
+                # Track failed URLs by failure type for intelligent retry logic
+                failed_batch_urls = [url for url in batch_urls if url not in actual_content_hashes]
                 
-                # Save progress after each successful batch
-                self._save_progress(content_hashes, list(content_hashes.keys()), urls)
+                # Extract failure information from batch results
+                batch_failures = batch_hashes.pop("_failures", {}) if "_failures" in batch_hashes else {}
+                
+                # Categorize failed URLs by their failure type and only add retryable ones to retry list
+                for url in failed_batch_urls:
+                    failure_type = batch_failures.get(url, "unknown")
+                    
+                    # Initialize failure type list if it doesn't exist
+                    if failure_type not in failed_urls:
+                        failed_urls[failure_type] = []
+                    
+                    # Add URL to appropriate failure category (avoid duplicates)
+                    if url not in failed_urls[failure_type]:
+                        failed_urls[failure_type].append(url)
+                    
+                    # Only add to retry list if it's not a permanent failure (like 404, 403, client_error)
+                    if failure_type not in ['not_found', 'forbidden', 'client_error']:
+                        retryable_failed_urls.append(url)
+                
+                # Save progress after each successful batch, including failed URLs
+                # Filter out special metadata keys before saving
+                clean_content_hashes = {k: v for k, v in content_hashes.items() if not k.startswith('_')}
+                self._save_progress(clean_content_hashes, list(clean_content_hashes.keys()), urls, failed_urls)
                 
                 # Track URLs processed in this run for progress reporting
                 urls_processed_this_run.extend(batch_urls)
-                print(f"  💾 Progress saved: {len(content_hashes)} URLs processed, {len(content_hashes)}/{len(urls)} total")
+                print(f"  💾 Progress saved: {len(clean_content_hashes)} URLs processed, {len(clean_content_hashes)}/{len(urls)} total")
                 
                 # Check for IP-level rate limiting from previous runs
                 if self._is_ip_level_rate_limited(rate_limit_success_rate, step + 1):
@@ -1312,44 +1468,63 @@ class ContentDetector(BaseDetector):
         
         # Retry failed URLs with lower concurrency for 100% accuracy
         # BUT ONLY if we didn't stop due to severe rate limiting
-        if failed_urls and not self._stopped_due_to_rate_limiting:
-            print(f"Retrying {len(failed_urls)} failed URLs with conservative settings...")
-            retry_concurrency = max(1, current_concurrency // 2)  # Use half the current concurrency
+        # AND only retry URLs that aren't permanently failed (like 404s)
+        if retryable_failed_urls and not self._stopped_due_to_rate_limiting:
+            # Filter out permanently failed URLs from retry
+            actually_retryable_urls = []
+            for url in retryable_failed_urls:
+                # Check if this URL was marked as permanently failed in this run
+                is_permanently_failed = False
+                for failure_type, failed_url_list in failed_urls.items():
+                    if failure_type in ['not_found', 'forbidden', 'client_error'] and url in failed_url_list:
+                        is_permanently_failed = True
+                        break
+                
+                if not is_permanently_failed:
+                    actually_retryable_urls.append(url)
             
-            # Create a new session for retries since the original was closed
-            retry_session = await self._create_ultra_fast_session()
-            try:
-                retry_semaphore = asyncio.Semaphore(retry_concurrency)
+            if actually_retryable_urls:
+                print(f"Retrying {len(actually_retryable_urls)} retryable URLs with conservative settings...")
+                retry_concurrency = max(1, current_concurrency // 2)  # Use half the current concurrency
                 
-                retry_tasks = []
-                for url in failed_urls:
-                    task = self._fetch_single_ultra_fast(retry_session, url, retry_semaphore)
-                    retry_tasks.append(task)
-                
-                retry_results = await asyncio.gather(*retry_tasks, return_exceptions=True)
-                
-                # Process retry results
-                retry_successful = 0
-                for j, result in enumerate(retry_results):
-                    url = failed_urls[j]
-                    if isinstance(result, tuple) and len(result) == 3:
-                        url, content_hash, failure_type = result
-                        if content_hash:
-                            content_hashes[url] = {
-                                "hash": content_hash,
-                                "fetched_at": datetime.now().isoformat(),
-                                "status": "success_retry"
-                            }
-                            retry_successful += 1
-                            urls_processed_this_run.append(url)
-                
-                print(f"Retry completed - {retry_successful}/{len(failed_urls)} URLs successfully retried")
-            finally:
-                await retry_session.close()
-        elif failed_urls and self._stopped_due_to_rate_limiting:
-            print(f"🛑 Skipping retry of {len(failed_urls)} failed URLs due to severe rate limiting - will retry in next run")
+                # Create a new session for retries since the original was closed
+                retry_session = await self._create_ultra_fast_session()
+                try:
+                    retry_semaphore = asyncio.Semaphore(retry_concurrency)
+                    
+                    retry_tasks = []
+                    for url in actually_retryable_urls:
+                        task = self._fetch_single_ultra_fast(retry_session, url, retry_semaphore)
+                        retry_tasks.append(task)
+                    
+                    retry_results = await asyncio.gather(*retry_tasks, return_exceptions=True)
+                    
+                    # Process retry results
+                    retry_successful = 0
+                    for j, result in enumerate(retry_results):
+                        url = actually_retryable_urls[j]
+                        if isinstance(result, tuple) and len(result) == 3:
+                            url, content_hash, failure_type = result
+                            if content_hash:
+                                content_hashes[url] = {
+                                    "hash": content_hash,
+                                    "fetched_at": datetime.now().isoformat(),
+                                    "status": "success_retry"
+                                }
+                                retry_successful += 1
+                                urls_processed_this_run.append(url)
+                    
+                    print(f"Retry completed - {retry_successful}/{len(actually_retryable_urls)} URLs successfully retried")
+                finally:
+                    await retry_session.close()
+            else:
+                print(f"🔄 No retryable URLs found - all failed URLs are permanently failed (404s, 403s, etc.)")
+        elif retryable_failed_urls and self._stopped_due_to_rate_limiting:
+            print(f"🛑 Skipping retry of {len(retryable_failed_urls)} failed URLs due to severe rate limiting - will retry in next run")
         
-        return content_hashes
+        # Filter out any special metadata keys before returning
+        clean_content_hashes = {k: v for k, v in content_hashes.items() if not k.startswith('_')}
+        return clean_content_hashes
 
     def _adjust_concurrency(self):
         """Dynamically adjust concurrency based on server health."""
@@ -1461,6 +1636,13 @@ class ContentDetector(BaseDetector):
         """Handle rate limiting with proper backoff and retry logic."""
         print(f"  🚨 RATE LIMITING DETECTED - Consecutive 429s: {consecutive_429s}")
         
+        # If using proxies, mark current proxy as failed and rotate
+        if self.proxy_enabled and self.proxy_manager:
+            current_proxy_session = getattr(session, '_proxy_session', None)
+            if current_proxy_session:
+                self.proxy_manager.mark_proxy_failed(current_proxy_session.proxy_url)
+                print(f"  🚫 Marked proxy as failed and will rotate")
+        
         # Calculate backoff time based on consecutive 429s
         if consecutive_429s <= 3:
             backoff_time = 30  # 30 seconds for first few 429s
@@ -1478,7 +1660,7 @@ class ContentDetector(BaseDetector):
             self._current_user_agent = random.choice(self.user_agents)
             print(f"  🔄 Rotated to new user agent: {self._current_user_agent[:50]}...")
         
-        # Create completely new session
+        # Create completely new session (will use new proxy if available)
         session = await self._create_ultra_fast_session()
         
         # Add extra headers to appear more like a real browser

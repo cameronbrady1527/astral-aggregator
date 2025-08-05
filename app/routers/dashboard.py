@@ -11,6 +11,7 @@
 
 # Standard Library -----
 from typing import Dict, Any
+import time
 
 # Third-Party -----
 from fastapi import APIRouter
@@ -22,6 +23,63 @@ from fastapi.responses import HTMLResponse
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
+@router.get("/simplified")
+async def simplified_dashboard():
+    """Dashboard endpoint for simplified change detection system."""
+    try:
+        from ..utils.simplified_change_detector import SimplifiedChangeDetector
+        from pathlib import Path
+        import json
+        
+        detector = SimplifiedChangeDetector()
+        baseline_manager = detector.baseline_manager
+        
+        # Get baseline events
+        baseline_events = baseline_manager.get_baseline_events(limit=10)
+        
+        # Get changes directory info
+        changes_dir = Path("changes")
+        change_files = []
+        if changes_dir.exists():
+            change_files = list(changes_dir.glob("*_changes.json"))
+            change_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+        
+        # Get recent changes summary
+        recent_changes = []
+        for file_path in change_files[:5]:  # Last 5 change files
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    recent_changes.append({
+                        "file": file_path.name,
+                        "site_name": data.get("metadata", {}).get("site_name", "Unknown"),
+                        "total_changes": data.get("metadata", {}).get("total_changes", 0),
+                        "detection_time": data.get("metadata", {}).get("detection_time", ""),
+                        "file_created": data.get("metadata", {}).get("file_created", "")
+                    })
+            except Exception as e:
+                print(f"Error reading change file {file_path}: {e}")
+        
+        return {
+            "status": "success",
+            "simplified_system": {
+                "available": True,
+                "baseline_events": baseline_events,
+                "total_change_files": len(change_files),
+                "recent_changes": recent_changes,
+                "changes_directory": str(changes_dir.absolute()) if changes_dir.exists() else None
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "simplified_system": {
+                "available": False,
+                "error": str(e)
+            }
+        }
+
 # ==============================================================================
 # Dashboard Endpoints
 # ==============================================================================
@@ -29,6 +87,40 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 @router.get("/", response_class=HTMLResponse)
 async def dashboard():
     """Main dashboard for viewing change detection results."""
+    
+    # Get simplified system status
+    simplified_status = {}
+    try:
+        from ..utils.simplified_change_detector import SimplifiedChangeDetector
+        detector = SimplifiedChangeDetector()
+        baseline_manager = detector.baseline_manager
+        
+        # Get recent baseline events
+        baseline_events = baseline_manager.get_baseline_events(limit=5)
+        
+        # Get changes directory info
+        from pathlib import Path
+        changes_dir = Path("changes")
+        if changes_dir.exists():
+            change_files = list(changes_dir.glob("*_changes.json"))
+            simplified_status = {
+                "available": True,
+                "baseline_events": baseline_events,
+                "total_change_files": len(change_files),
+                "recent_changes": len([f for f in change_files if f.stat().st_mtime > (time.time() - 86400)])  # Last 24 hours
+            }
+        else:
+            simplified_status = {
+                "available": True,
+                "baseline_events": baseline_events,
+                "total_change_files": 0,
+                "recent_changes": 0
+            }
+    except Exception as e:
+        simplified_status = {
+            "available": False,
+            "error": str(e)
+        }
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -523,6 +615,7 @@ async def dashboard():
             <div class="header">
                 <h1>🌌 Astral</h1>
                 <p>AI-Driven Infrastructure for Operational Intelligence</p>
+                <p style="font-size: 1rem; margin-top: 10px; color: #60a5fa;">✨ Using Simplified Change Detection System</p>
             </div>
             
             <div class="refresh-indicator" id="refreshIndicator">
@@ -610,7 +703,7 @@ async def dashboard():
                     <h3><span class="card-icon">⚙️</span> Site Management</h3>
                     <div class="actions">
                         <button class="btn btn-success" onclick="triggerAllSites()">
-                            🚀 Trigger All Sites
+                            🚀 Simplified Trigger All Sites
                         </button>
                         <button class="btn btn-primary" onclick="refreshData()">
                             🔄 Refresh Data
@@ -881,7 +974,7 @@ async def dashboard():
             
             async function loadRecentChanges() {
                 try {
-                    const response = await fetch('/api/listeners/changes?limit=10');
+                    const response = await fetch('/api/listeners/changes?limit=10&use_simplified=true');
                     const data = await response.json();
                     
                     const content = document.getElementById('recentChangesContent');
@@ -952,7 +1045,7 @@ async def dashboard():
                                         </div>
                                         <div class="detail-item">
                                             <button class="btn btn-warning" onclick="triggerSite('${site.site_id}')">
-                                                Trigger
+                                                Simplified Trigger
                                             </button>
                                         </div>
                                     </div>
@@ -1066,10 +1159,10 @@ async def dashboard():
                                 eventIcon = '🔄';
                                 eventColor = '#8b5cf6';
                                 eventTitle = 'Baseline Replaced';
-                            } else if (event.event_type === 'baseline_validation') {
-                                eventIcon = details.is_valid ? '✅' : '⚠️';
-                                eventColor = details.is_valid ? '#10b981' : '#f59e0b';
-                                eventTitle = details.is_valid ? 'Baseline Validated' : 'Baseline Validation Failed';
+                            } else if (event.event_type === 'baseline_validated') {
+                                eventIcon = '✅';
+                                eventColor = '#10b981';
+                                eventTitle = 'Baseline Validated';
                             }
                             
                             let eventDetails = '';
@@ -1081,13 +1174,13 @@ async def dashboard():
                                 eventDetails = details.error;
                             } else if (event.event_type === 'baseline_replaced') {
                                 eventDetails = `${details.total_urls} URLs, ${details.total_content_hashes} content hashes`;
-                            } else if (event.event_type === 'baseline_validation') {
-                                if (details.errors && details.errors.length > 0) {
-                                    eventDetails = `${details.errors.length} validation errors`;
-                                } else if (details.warnings && details.warnings.length > 0) {
-                                    eventDetails = `${details.warnings.length} validation warnings`;
+                            } else if (event.event_type === 'baseline_validated') {
+                                if (details.message) {
+                                    eventDetails = details.message;
+                                } else if (details.total_urls !== undefined) {
+                                    eventDetails = `${details.total_urls} URLs validated, ${details.total_content_hashes} content hashes`;
                                 } else {
-                                    eventDetails = 'Validation passed';
+                                    eventDetails = 'Baseline validation completed successfully';
                                 }
                             }
                             
@@ -1290,7 +1383,7 @@ async def dashboard():
             
             async function triggerSite(siteId) {
                 try {
-                    const response = await fetch(`/api/listeners/trigger/${siteId}`, {
+                    const response = await fetch(`/api/listeners/trigger/${siteId}?use_simplified=true`, {
                         method: 'POST'
                     });
                     
@@ -1298,7 +1391,7 @@ async def dashboard():
                     
                     if (response.ok) {
                         if (data.status === 'started') {
-                            showSuccess(`Detection started for ${siteId}. Monitoring progress...`);
+                            showSuccess(`Simplified detection started for ${siteId}. Monitoring progress...`);
                             // Start monitoring progress more frequently
                             const progressInterval = setInterval(async () => {
                                 await loadDetectionProgress();
@@ -1309,7 +1402,7 @@ async def dashboard():
                                 }
                             }, 1000);
                         } else {
-                            showSuccess(`Successfully triggered detection for ${siteId}`);
+                            showSuccess(`Successfully triggered simplified detection for ${siteId}`);
                             setTimeout(() => {
                                 loadAllData();
                             }, 2000);
@@ -1325,12 +1418,12 @@ async def dashboard():
             
             async function triggerAllSites() {
                 try {
-                    const response = await fetch('/api/listeners/trigger/all', {
+                    const response = await fetch('/api/listeners/trigger/all?use_simplified=true', {
                         method: 'POST'
                     });
                     
                     if (response.ok) {
-                        showSuccess('Successfully triggered detection for all sites');
+                        showSuccess('Successfully triggered simplified detection for all sites');
                         setTimeout(() => {
                             loadAllData();
                         }, 2000);

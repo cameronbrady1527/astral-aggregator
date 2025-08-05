@@ -24,10 +24,22 @@ from crawler.sitemap_detector import SitemapDetector
 
 class MockSiteConfig:
     """Mock site configuration for testing."""
-    def __init__(self):
-        self.name = "Judiciary UK"
-        self.url = "https://www.judiciary.uk/"
-        self.sitemap_url = "https://www.judiciary.uk/sitemap_index.xml"
+    def __init__(self, site_id: str = None):
+        # Default to Judiciary UK if no site_id provided
+        if site_id == "judiciary_uk" or site_id is None:
+            self.name = "Judiciary UK"
+            self.url = "https://www.judiciary.uk/"
+            self.sitemap_url = "https://www.judiciary.uk/sitemap_index.xml"
+        elif site_id == "waverley_gov":
+            self.name = "Waverley Borough Council"
+            self.url = "https://www.waverley.gov.uk/"
+            self.sitemap_url = "https://www.waverley.gov.uk/sitemap.xml"
+        else:
+            # Generic configuration for unknown sites
+            self.name = site_id.replace("_", " ").title() if site_id else "Unknown Site"
+            self.url = f"https://{site_id.replace('_', '.')}/" if site_id else "https://example.com/"
+            self.sitemap_url = f"https://{site_id.replace('_', '.')}/sitemap.xml" if site_id else "https://example.com/sitemap.xml"
+        
         self.verify_deleted_urls = True
         self.max_concurrent_checks = 5
         self.verification_timeout = 10
@@ -237,6 +249,9 @@ class ComprehensiveBaselineCreator:
         with open(baseline_file, 'w', encoding='utf-8') as f:
             json.dump(baseline_data, f, indent=2, ensure_ascii=False)
         
+        # Create baseline event for dashboard integration
+        await self._create_baseline_event(site_id, baseline_data, str(baseline_file))
+        
         print(f"✅ Baseline saved successfully!")
         print(f"📊 Baseline contains:")
         print(f"   - {baseline_data['total_urls']} URLs")
@@ -244,6 +259,47 @@ class ComprehensiveBaselineCreator:
         print(f"   - Created at: {baseline_data['created_at']}")
         
         return str(baseline_file)
+    
+    async def _create_baseline_event(self, site_id: str, baseline_data: Dict[str, Any], file_path: str):
+        """Create baseline event for dashboard integration."""
+        try:
+            # Load existing events
+            events_file = Path("baselines/baseline_events.json")
+            events = []
+            
+            if events_file.exists():
+                with open(events_file, 'r', encoding='utf-8') as f:
+                    events = json.load(f)
+            
+            # Create new event
+            event = {
+                "timestamp": datetime.now().isoformat(),
+                "event_type": "baseline_created",
+                "site_id": site_id,
+                "details": {
+                    "file_path": file_path,
+                    "total_urls": baseline_data.get("total_urls", 0),
+                    "total_content_hashes": baseline_data.get("total_content_hashes", 0),
+                    "baseline_date": baseline_data.get("baseline_date"),
+                    "evolution_type": "initial_creation"
+                }
+            }
+            
+            # Add to events
+            events.append(event)
+            
+            # Keep only last 100 events
+            if len(events) > 100:
+                events = events[-100:]
+            
+            # Save events
+            with open(events_file, 'w', encoding='utf-8') as f:
+                json.dump(events, f, indent=2, ensure_ascii=False)
+            
+            print(f"📊 Baseline event created for dashboard integration")
+            
+        except Exception as e:
+            print(f"⚠️ Warning: Could not create baseline event: {e}")
     
     async def verify_baseline(self, baseline_file: str) -> bool:
         """Verify that the baseline file is valid."""
@@ -307,7 +363,7 @@ async def main():
     await reset_dashboard()
     
     # Step 2: Create baseline
-    site_config = MockSiteConfig()
+    site_config = MockSiteConfig(site_id)
     async with ComprehensiveBaselineCreator(site_config) as creator:
         baseline_data = await creator.create_baseline(site_id, max_urls)
         
