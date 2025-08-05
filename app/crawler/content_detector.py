@@ -595,7 +595,8 @@ class ContentDetector(BaseDetector):
         
         try:
             # Process URLs with progressive ramping if enabled
-            if self.progressive_ramping and len(urls) > self.ramp_batch_size:
+            # Use progressive ramping for large URL sets OR when we want rate limiting protection
+            if self.progressive_ramping and (len(urls) > self.ramp_batch_size or self.ip_rotation_enabled):
                 content_hashes = await self._fetch_with_progressive_ramping(session, urls)
                 # Calculate final success rate from content_hashes when using progressive ramping
                 successful_fetches = len(content_hashes)
