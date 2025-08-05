@@ -18,6 +18,7 @@ dependencies = [
     "firecrawl>=2.16.3",
     "beautifulsoup4>=4.13.4",
     "schedule>=1.2.2",
+    "lxml>=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -46,10 +47,6 @@ asyncio_mode = "auto"
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=app",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

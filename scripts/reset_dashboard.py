@@ -1,222 +1,150 @@
 #!/usr/bin/env python3
 """
-Dashboard Reset Script - Clear all existing change detection state
-This script resets the dashboard to start fresh with 0 changes.
+Reset Dashboard Script
+=====================
+
+This script resets the dashboard to starting values by:
+1. Deleting all baseline files
+2. Clearing baseline events
+3. Clearing progress files for sites
+4. Resetting the system to a clean state
+
+Usage:
+    python scripts/reset_dashboard.py
 """
 
-import asyncio
-import json
-import sys
 import os
 import shutil
+import json
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any
 
-
-class DashboardReset:
-    """Reset dashboard state and clear existing change detection data."""
+def reset_dashboard():
+    """Reset the dashboard to starting values."""
     
-    def __init__(self):
-        self.base_dir = Path(".")
-    
-    async def reset_all_state(self) -> Dict[str, Any]:
-        """Reset all dashboard and change detection state."""
-        print("🔄 Starting comprehensive dashboard reset...")
-        
-        reset_results = {
-            "reset_time": datetime.now().isoformat(),
-            "actions_taken": [],
-            "errors": []
-        }
-        
-        # Step 1: Clear output directory (but keep structure)
-        await self._clear_output_directory(reset_results)
-        
-        # Step 2: Clear cache directory
-        await self._clear_cache_directory(reset_results)
-        
-        # Step 3: Clear temp files
-        await self._clear_temp_files(reset_results)
-        
-        # Step 4: Reset any database state (if applicable)
-        await self._reset_database_state(reset_results)
-        
-        # Step 5: Create fresh state files
-        await self._create_fresh_state_files(reset_results)
-        
-        return reset_results
-    
-    async def _clear_output_directory(self, results: Dict[str, Any]):
-        """Clear the output directory but keep the structure."""
-        output_dir = self.base_dir / "output"
-        
-        if output_dir.exists():
-            print("🗑️  Clearing output directory...")
-            
-            # Remove all files in output directory
-            for item in output_dir.iterdir():
-                try:
-                    if item.is_file():
-                        item.unlink()
-                        results["actions_taken"].append(f"Deleted file: {item}")
-                    elif item.is_dir():
-                        shutil.rmtree(item)
-                        results["actions_taken"].append(f"Deleted directory: {item}")
-                except PermissionError:
-                    error_msg = f"Permission denied: {item}"
-                    results["errors"].append(error_msg)
-                    print(f"⚠️  {error_msg}")
-                except Exception as e:
-                    error_msg = f"Failed to delete {item}: {str(e)}"
-                    results["errors"].append(error_msg)
-                    print(f"⚠️  {error_msg}")
-            
-            print("✅ Output directory cleared")
-        else:
-            print("📁 Output directory doesn't exist, creating...")
-            output_dir.mkdir(exist_ok=True)
-            results["actions_taken"].append("Created output directory")
-    
-    async def _clear_cache_directory(self, results: Dict[str, Any]):
-        """Clear the cache directory."""
-        cache_dir = self.base_dir / "cache"
-        
-        if cache_dir.exists():
-            print("🗑️  Clearing cache directory...")
-            
-            try:
-                shutil.rmtree(cache_dir)
-                cache_dir.mkdir(exist_ok=True)
-                results["actions_taken"].append("Cleared cache directory")
-                print("✅ Cache directory cleared")
-            except Exception as e:
-                error_msg = f"Failed to clear cache: {str(e)}"
-                results["errors"].append(error_msg)
-                print(f"❌ {error_msg}")
-        else:
-            print("📁 Cache directory doesn't exist, creating...")
-            cache_dir.mkdir(exist_ok=True)
-            results["actions_taken"].append("Created cache directory")
-    
-    async def _clear_temp_files(self, results: Dict[str, Any]):
-        """Clear temporary files."""
-        temp_dir = self.base_dir / "temp_files"
-        
-        if temp_dir.exists():
-            print("🗑️  Clearing temporary files...")
-            
-            try:
-                for item in temp_dir.iterdir():
-                    if item.is_file():
-                        item.unlink()
-                        results["actions_taken"].append(f"Deleted temp file: {item.name}")
-                print("✅ Temporary files cleared")
-            except Exception as e:
-                error_msg = f"Failed to clear temp files: {str(e)}"
-                results["errors"].append(error_msg)
-                print(f"❌ {error_msg}")
-        else:
-            print("📁 Temp directory doesn't exist, creating...")
-            temp_dir.mkdir(exist_ok=True)
-            results["actions_taken"].append("Created temp directory")
-    
-    async def _reset_database_state(self, results: Dict[str, Any]):
-        """Reset any database state (placeholder for future implementation)."""
-        print("🗄️  Checking for database state...")
-        
-        # This would typically involve:
-        # - Clearing database tables
-        # - Resetting counters
-        # - Clearing session data
-        
-        # For now, just note that no database state was found
-        results["actions_taken"].append("No database state found to reset")
-        print("✅ No database state to reset")
-    
-    async def _create_fresh_state_files(self, results: Dict[str, Any]):
-        """Create fresh state files to indicate reset."""
-        print("📝 Creating fresh state files...")
-        
-        # Create a reset marker file
-        reset_marker = self.base_dir / "dashboard_reset.json"
-        reset_data = {
-            "reset_time": datetime.now().isoformat(),
-            "reset_type": "comprehensive",
-            "status": "completed",
-            "next_action": "create_baseline"
-        }
-        
-        with open(reset_marker, 'w', encoding='utf-8') as f:
-            json.dump(reset_data, f, indent=2, ensure_ascii=False)
-        
-        results["actions_taken"].append("Created reset marker file")
-        print("✅ Fresh state files created")
-    
-    async def save_reset_report(self, results: Dict[str, Any]) -> str:
-        """Save reset report to file."""
-        reports_dir = self.base_dir / "reports"
-        reports_dir.mkdir(exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_file = reports_dir / f"dashboard_reset_{timestamp}.json"
-        
-        with open(report_file, 'w', encoding='utf-8') as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
-        
-        return str(report_file)
-
-
-async def main():
-    """Main function."""
-    print("🚀 Dashboard Reset Tool")
+    print("🔄 Resetting Dashboard to Starting Values...")
     print("=" * 50)
     
-    # Confirm reset
-    if len(sys.argv) > 1 and sys.argv[1] == "--force":
-        print("⚠️  Force reset mode - proceeding without confirmation")
-    else:
-        print("⚠️  This will clear ALL existing change detection state!")
-        print("   - Output files will be deleted")
-        print("   - Cache will be cleared")
-        print("   - Temporary files will be removed")
-        print("   - Dashboard will be reset to 0 changes")
-        print()
+    # Get the project root directory
+    project_root = Path(__file__).parent.parent
+    baselines_dir = project_root / "baselines"
+    output_dir = project_root / "output"
+    cache_dir = project_root / "cache"
+    progress_dir = project_root / "progress"
+    
+    # 1. Delete all baseline files
+    print("\n🗑️  Deleting baseline files...")
+    if baselines_dir.exists():
+        baseline_files = list(baselines_dir.glob("*_baseline.json"))
+        baseline_events_file = baselines_dir / "baseline_events.json"
         
-        response = input("Are you sure you want to proceed? (yes/no): ")
-        if response.lower() not in ['yes', 'y']:
-            print("❌ Reset cancelled")
-            return 1
+        deleted_count = 0
+        for baseline_file in baseline_files:
+            try:
+                baseline_file.unlink()
+                deleted_count += 1
+                print(f"   ✅ Deleted: {baseline_file.name}")
+            except Exception as e:
+                print(f"   ❌ Error deleting {baseline_file.name}: {e}")
+        
+        # Delete baseline events file
+        if baseline_events_file.exists():
+            try:
+                baseline_events_file.unlink()
+                print(f"   ✅ Deleted: baseline_events.json")
+            except Exception as e:
+                print(f"   ❌ Error deleting baseline_events.json: {e}")
+        
+        print(f"   📊 Total baseline files deleted: {deleted_count}")
+    else:
+        print("   ℹ️  No baselines directory found")
     
-    # Perform reset
-    resetter = DashboardReset()
-    results = await resetter.reset_all_state()
+    # 2. Clear output directories (optional - uncomment if you want to clear all output)
+    print("\n🗂️  Clearing output directories...")
+    if output_dir.exists():
+        output_subdirs = [d for d in output_dir.iterdir() if d.is_dir()]
+        cleared_count = 0
+        for subdir in output_subdirs:
+            try:
+                shutil.rmtree(subdir)
+                cleared_count += 1
+                print(f"   ✅ Cleared: {subdir.name}")
+            except Exception as e:
+                print(f"   ❌ Error clearing {subdir.name}: {e}")
+        print(f"   📊 Total output directories cleared: {cleared_count}")
+    else:
+        print("   ℹ️  No output directory found")
     
-    # Save report
-    report_file = await resetter.save_reset_report(results)
+    # 3. Clear cache (optional)
+    print("\n🧹 Clearing cache...")
+    if cache_dir.exists():
+        cache_subdirs = [d for d in cache_dir.iterdir() if d.is_dir()]
+        cleared_count = 0
+        for subdir in cache_subdirs:
+            try:
+                shutil.rmtree(subdir)
+                cleared_count += 1
+                print(f"   ✅ Cleared cache: {subdir.name}")
+            except Exception as e:
+                print(f"   ❌ Error clearing cache {subdir.name}: {e}")
+        print(f"   📊 Total cache directories cleared: {cleared_count}")
+    else:
+        print("   ℹ️  No cache directory found")
     
-    # Print summary
+    # 4. Clear progress files for sites
+    print("\n📊 Clearing progress files for sites...")
+    if progress_dir.exists():
+        progress_files = list(progress_dir.glob("*_progress.json"))
+        cleared_count = 0
+        for progress_file in progress_files:
+            try:
+                progress_file.unlink()
+                cleared_count += 1
+                print(f"   ✅ Cleared progress: {progress_file.name}")
+            except Exception as e:
+                print(f"   ❌ Error clearing progress {progress_file.name}: {e}")
+        print(f"   📊 Total progress files cleared: {cleared_count}")
+    else:
+        print("   ℹ️  No progress directory found")
+    
+    # 5. Create fresh baseline events file with empty structure
+    print("\n📝 Creating fresh baseline events file...")
+    if baselines_dir.exists():
+        baseline_events_file = baselines_dir / "baseline_events.json"
+        empty_events = []
+        try:
+            with open(baseline_events_file, 'w', encoding='utf-8') as f:
+                json.dump(empty_events, f, indent=2, ensure_ascii=False)
+            print("   ✅ Created fresh baseline_events.json")
+        except Exception as e:
+            print(f"   ❌ Error creating baseline_events.json: {e}")
+    
+    # 6. Create a reset marker file
+    reset_marker = project_root / "RESET_MARKER.txt"
+    try:
+        with open(reset_marker, 'w', encoding='utf-8') as f:
+            f.write(f"Dashboard reset completed at: {datetime.now().isoformat()}\n")
+            f.write("All baseline files, output data, and progress files have been cleared.\n")
+            f.write("The system is now in a clean starting state.\n")
+        print(f"   ✅ Created reset marker: {reset_marker.name}")
+    except Exception as e:
+        print(f"   ❌ Error creating reset marker: {e}")
+    
     print("\n" + "=" * 50)
-    print("📊 Dashboard Reset Summary:")
-    print(f"   Reset time: {results['reset_time']}")
-    print(f"   Actions taken: {len(results['actions_taken'])}")
-    print(f"   Errors: {len(results['errors'])}")
-    print(f"   Report saved to: {report_file}")
-    
-    if results['errors']:
-        print("\n❌ Errors encountered:")
-        for error in results['errors']:
-            print(f"   - {error}")
-    
-    print("\n✅ Dashboard reset complete!")
-    print("💡 Next steps:")
-    print("   1. Create a new comprehensive baseline")
-    print("   2. Start monitoring for changes")
-    print("   3. Verify the system shows 0 changes initially")
-    
-    return 0
-
+    print("✅ Dashboard Reset Complete!")
+    print("\n📋 Summary:")
+    print("   • All baseline files deleted")
+    print("   • Output directories cleared")
+    print("   • Cache cleared")
+    print("   • Progress files for sites cleared")
+    print("   • Fresh baseline events file created")
+    print("   • Reset marker file created")
+    print("\n🚀 The system is now ready to start fresh!")
+    print("   You can now run the application and see how it builds up from nothing.")
+    print("\n💡 Next steps:")
+    print("   1. Start the application: python -m app.main")
+    print("   2. Visit the dashboard: http://localhost:8000/dashboard")
+    print("   3. Trigger site detection to see the system in action")
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
-    sys.exit(exit_code) 
+    reset_dashboard() 

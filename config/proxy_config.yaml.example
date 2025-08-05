@@ -1,0 +1,68 @@
+# ==============================================================================
+# Proxy Configuration Example
+# ==============================================================================
+# Copy this file to proxy_config.yaml and customize with your proxy provider details
+# ==============================================================================
+
+# Enable proxy usage globally
+proxy_enabled: true
+
+# Proxy provider selection
+# Options: bright_data, oxylabs, proxymesh, storm_proxies, tor
+proxy_provider: "tor"
+
+# Proxy authentication (required for most providers)
+proxy_username: "your_username_here"
+proxy_password: "your_password_here"
+
+# Proxy server details
+proxy_host: "127.0.0.1"  # Default for Tor
+proxy_port: 9050  # Default Tor SOCKS5 port
+
+# Geographic targeting (optional)
+proxy_country: "us"  # ISO country code
+proxy_city: "new_york"  # City name (if supported by provider)
+
+# Session management
+proxy_session_duration: 600  # 10 minutes
+proxy_max_requests_per_session: 100
+proxy_retry_attempts: 3
+proxy_timeout: 30
+
+# ==============================================================================
+# Provider-Specific Examples
+# ==============================================================================
+
+# Bright Data Configuration
+bright_data:
+  host: "brd.superproxy.io"
+  port: 22225
+  format: "http://{username}-country-{country}-session-{session_id}:{password}@{host}:{port}"
+
+# Oxylabs Configuration  
+oxylabs:
+  host: "pr.oxylabs.io"
+  port: 7777
+  format: "http://{username}-country-{country}-session-{session_id}:{password}@{host}:{port}"
+
+# ProxyMesh Configuration
+proxymesh:
+  host: "proxy.proxymesh.com"
+  port: 31280
+  format: "http://{username}:{password}@{host}:{port}"
+
+# Storm Proxies Configuration
+storm_proxies:
+  host: "residential.stormproxies.com"
+  port: 10000
+  format: "http://{username}:{password}@{host}:{port}"
+
+# Tor Configuration (requires Tor to be running locally)
+tor:
+  host: "127.0.0.1"
+  port: 9050  # SOCKS5 port
+  control_port: 9051  # Control port for identity renewal
+  control_password: "your_tor_control_password"  # Set in torrc
+  format: "socks5://{host}:{port}"
+  max_circuits: 10  # Number of requests before renewing identity
+  circuit_timeout: 300  # Circuit timeout in seconds 

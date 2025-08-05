@@ -252,6 +252,73 @@ firecrawl:
   base_url: "https://api.firecrawl.dev"
 ```
 
+### Tor Proxy Configuration
+
+The system supports Tor for anonymous web scraping. Tor provides free, anonymous access and is automatically managed by the application.
+
+#### Automatic Setup
+
+The application automatically handles Tor setup and management:
+
+1. **Install Tor or Tor Browser:**
+   - **Windows**: Download [Tor Browser](https://www.torproject.org/download/) or standalone Tor
+   - **macOS**: `brew install tor` or download Tor Browser
+   - **Linux**: `sudo apt install tor` (Ubuntu/Debian) or download Tor Browser
+
+2. **Enable Tor in your environment:**
+   ```bash
+   export PROXY_PROVIDER=tor
+   ```
+
+3. **Start the application:**
+   ```bash
+   python -m uvicorn app.main:app --reload
+   ```
+
+The application will automatically:
+- ✅ Detect Tor installation (standalone or Tor Browser)
+- ✅ Create Tor configuration files
+- ✅ Start Tor service on startup
+- ✅ Manage Tor lifecycle (start/stop/restart)
+- ✅ Handle Tor health monitoring
+- ✅ Clean up Tor processes on shutdown
+
+#### Configuration Options
+
+```yaml
+# In your site configuration
+sites:
+  site_id:
+    name: "Site Name"
+    url: "https://example.com/"
+    proxy_enabled: true
+    proxy_provider: "tor"
+    proxy_timeout: 30
+```
+
+#### Features
+
+- **Automatic Management**: Tor is started/stopped with the application
+- **Health Monitoring**: Automatic health checks and restart on failure
+- **IP Rotation**: Tor automatically rotates IP addresses every 10 requests
+- **Circuit Management**: Automatic circuit management for better performance
+- **Anonymous Browsing**: All requests go through the Tor network
+- **Graceful Shutdown**: Proper cleanup of Tor processes
+
+#### Performance Considerations
+
+- Tor is significantly slower than commercial proxies (2-10x slower)
+- Connection timeouts should be increased (30+ seconds recommended)
+- Concurrent requests are limited by Tor circuit capacity
+- Consider using multiple Tor instances for high-volume scraping
+
+#### Testing
+
+Test the Tor integration:
+```bash
+python test_tor_integration.py
+```
+
 ## Development
 
 ### Project Structure

@@ -87,3 +87,9 @@ htmlcov/
 
 # Python version file
 .python-version
+
+# Changes directory for change detection results
+changes/
+
+# Backup Scripts
+scripts/backup/

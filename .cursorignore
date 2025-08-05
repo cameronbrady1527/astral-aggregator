@@ -1,0 +1,70 @@
+# Cursor performance optimization - exclude directories that cause high CPU usage
+
+# Python cache directories
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+ENV/
+
+# Node modules (if any)
+node_modules/
+
+# Git directories
+.git/
+
+# Large data directories
+output/
+comparison_results/
+progress/
+changes/
+baselines/
+
+# Log files
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Large binary files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Documentation build directories
+docs/_build/
+site/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Jupyter notebooks (if any)
+.ipynb_checkpoints/
+
+# Backup files
+*.bak
+*.backup 
