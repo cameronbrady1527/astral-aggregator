@@ -232,10 +232,26 @@ class BaselineManager:
                 }
             })
             
+            # Log the baseline update event
+            self._log_baseline_event("baseline_updated", site_id, {
+                "changes_applied": len(changes),
+                "new_urls": len([c for c in changes if c.get("change_type") == "new"]),
+                "modified_urls": len([c for c in changes if c.get("change_type") == "modified"]),
+                "deleted_urls": len([c for c in changes if c.get("change_type") == "deleted"]),
+                "previous_baseline_date": previous_baseline.get("baseline_date"),
+                "baseline_date": new_baseline.get("baseline_date"),
+                "evolution_type": "automatic_update"
+            })
+            
             return new_baseline
             
         except Exception as e:
             print(f"Error updating baseline for {site_id}: {e}")
+            # Log the error
+            self._log_baseline_event("baseline_error", site_id, {
+                "error": str(e),
+                "operation": "update_baseline_from_changes"
+            })
             # Return the previous baseline as fallback
             return previous_baseline
     

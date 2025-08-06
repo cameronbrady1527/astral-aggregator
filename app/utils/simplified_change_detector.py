@@ -9,13 +9,23 @@ import asyncio
 import json
 import hashlib
 import aiohttp
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 
 from .baseline_manager import BaselineManager
 from .config import ConfigManager
+
+
+# Image and file extensions to ignore
+IMAGE_EXTENSIONS = {
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', 
+    '.svg', '.ico', '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+    '.ppt', '.pptx', '.zip', '.rar', '.tar', '.gz'
+}
 
 
 class SimplifiedChangeDetector:
@@ -31,6 +41,86 @@ class SimplifiedChangeDetector:
         self.baseline_manager = BaselineManager()
         self.changes_dir = Path("changes")
         self.changes_dir.mkdir(exist_ok=True)
+        
+        # Proxy support
+        self.proxy_manager = None
+        self.proxy_enabled = True  # Enable by default for large sites
+        self.proxy_threshold = 50  # Use proxy if more than 50 URLs
+        self._consecutive_429s = 0
+        self._last_429_time = None
+        self._rate_limit_backoff = 0
+        
+        # Initialize proxy manager (will be done when first needed)
+        self._proxy_initialized = False
+    
+    async def _initialize_proxy_manager(self):
+        """Initialize proxy manager for residential proxy support."""
+        try:
+            from app.utils.proxy_manager import create_proxy_manager_from_env
+            self.proxy_manager = await create_proxy_manager_from_env()
+            if self.proxy_manager:
+                print(f"✅ Proxy manager initialized: {self.proxy_manager.config.provider.value}")
+            else:
+                print("⚠️ Proxy manager initialization failed, continuing without proxy")
+        except Exception as e:
+            print(f"❌ Error initializing proxy manager: {e}")
+    
+    async def _check_proxy_health(self) -> bool:
+        """Check if proxy is healthy and working."""
+        if not self.proxy_manager:
+            return False
+        
+        try:
+            # Test proxy with a simple request
+            test_url = "http://httpbin.org/ip"
+            proxy_connector = await self.proxy_manager.get_proxy_connector()
+            
+            if proxy_connector:
+                async with aiohttp.ClientSession(connector=proxy_connector) as session:
+                    async with session.get(test_url, timeout=10) as response:
+                        if response.status == 200:
+                            print("✅ Proxy health check passed")
+                            return True
+            
+            print("❌ Proxy health check failed")
+            return False
+        except Exception as e:
+            print(f"❌ Proxy health check error: {e}")
+            return False
+    
+    def _is_ignorable_file(self, url: str) -> bool:
+        """Check if URL points to an ignorable file (images, documents, etc.)."""
+        parsed = urlparse(url)
+        path = parsed.path.lower()
+        
+        # Check file extension
+        for ext in IMAGE_EXTENSIONS:
+            if path.endswith(ext):
+                return True
+        
+        # Check for common image patterns in URL
+        image_patterns = [
+            r'/images?/', r'/img/', r'/photos?/', r'/pics?/', 
+            r'/assets/', r'/static/', r'/media/', r'/uploads/',
+            r'\.(jpg|jpeg|png|gif|bmp|tiff|webp|svg|ico)$'
+        ]
+        
+        for pattern in image_patterns:
+            if re.search(pattern, path):
+                return True
+        
+        return False
+    
+    def _get_file_type(self, url: str) -> str:
+        """Get the file type from URL."""
+        parsed = urlparse(url)
+        path = parsed.path.lower()
+        
+        for ext in IMAGE_EXTENSIONS:
+            if path.endswith(ext):
+                return ext[1:].upper()  # Remove dot and uppercase
+        
+        return "unknown"
     
     async def detect_changes_for_site(self, site_id: str) -> Dict[str, Any]:
         """Detect changes for a specific site using simplified approach."""
@@ -66,14 +156,23 @@ class SimplifiedChangeDetector:
             return await self._handle_no_changes(site_config, current_baseline)
     
     async def _get_current_state(self, site_config: Any) -> Dict[str, Any]:
-        """Get current state including sitemap URLs and content hashes."""
+        """Get current state (sitemap + content hashes) with adaptive proxy usage."""
         print("📋 Step 1: Fetching sitemap URLs...")
         
-        # Get sitemap URLs
+        # Get sitemap URLs first
         sitemap_urls = await self._get_sitemap_urls(site_config)
         print(f"✅ Found {len(sitemap_urls)} URLs in sitemap")
         
-        # Get content hashes for all URLs
+        # Decide whether to use proxy based on URL count
+        use_proxy = len(sitemap_urls) > self.proxy_threshold
+        if use_proxy and self.proxy_manager:
+            print(f"🌐 Large site detected ({len(sitemap_urls)} URLs), using residential proxy")
+        elif use_proxy and not self.proxy_manager:
+            print(f"⚠️ Large site detected ({len(sitemap_urls)} URLs) but no proxy available")
+        else:
+            print(f"📊 Small site ({len(sitemap_urls)} URLs), using direct connection")
+        
+        # Get content hashes (proxy decision made in _get_content_hashes)
         print("🔍 Step 2: Calculating content hashes...")
         content_hashes = await self._get_content_hashes(sitemap_urls)
         print(f"✅ Successfully processed {len(content_hashes)} URLs")
@@ -83,7 +182,8 @@ class SimplifiedChangeDetector:
             "content_hashes": content_hashes,
             "detection_time": datetime.now().isoformat(),
             "total_urls": len(sitemap_urls),
-            "total_content_hashes": len(content_hashes)
+            "total_content_hashes": len(content_hashes),
+            "proxy_used": use_proxy and self.proxy_manager is not None
         }
     
     async def _get_sitemap_urls(self, site_config: Any) -> List[str]:
@@ -110,11 +210,23 @@ class SimplifiedChangeDetector:
                 # Check if this is a sitemap index
                 if self._is_sitemap_index(content):
                     print("📋 Found sitemap index, processing all sitemaps...")
-                    return await self._process_sitemap_index(session, content)
+                    urls = await self._process_sitemap_index(session, content)
                 else:
                     # Regular sitemap
                     urls = self._parse_sitemap(content)
-                    return urls
+                
+                # Filter out images and files
+                filtered_urls = []
+                ignored_count = 0
+                
+                for url in urls:
+                    if self._is_ignorable_file(url):
+                        ignored_count += 1
+                        continue
+                    filtered_urls.append(url)
+                
+                print(f"📊 Filtered URLs: {len(filtered_urls)} valid, {ignored_count} ignored (images/files)")
+                return filtered_urls
                 
         except Exception as e:
             print(f"❌ Error fetching sitemap: {e}")
@@ -208,25 +320,101 @@ class SimplifiedChangeDetector:
             raise Exception(f"Error fetching sitemap {sitemap_url}: {e}")
     
     async def _get_content_hashes(self, urls: List[str]) -> Dict[str, Any]:
-        """Get content hashes for URLs using efficient approach from comprehensive baseline."""
+        """Get content hashes for URLs using proxy support."""
         if not urls:
             return {}
         
         print(f"🔍 Getting content hashes for {len(urls)} URLs...")
         content_data = {}
         
+        # Get proxy connector if available and URL count exceeds threshold
+        proxy_connector = None
+        use_proxy = len(urls) > self.proxy_threshold
+        if use_proxy:
+            # Initialize proxy manager if not already done
+            if not self._proxy_initialized:
+                await self._initialize_proxy_manager()
+                self._proxy_initialized = True
+            
+            if self.proxy_manager:
+                # Try to get proxy connector, but don't fail if test fails
+                try:
+                    proxy_connector = await self.proxy_manager.get_proxy_connector()
+                    if proxy_connector:
+                        print("🌐 Using residential proxy for content fetching")
+                    else:
+                        print("⚠️ Proxy connector not available, using direct connection")
+                except Exception as e:
+                    print(f"⚠️ Proxy connector error: {e}, using direct connection")
+                    proxy_connector = None
+            else:
+                print("⚠️ Proxy manager not available, using direct connection")
+        else:
+            print("📊 Using direct connection (small site or no proxy)")
+        
         # Process URLs in batches for efficiency
         batch_size = 20
         total_batches = (len(urls) + batch_size - 1) // batch_size
         
-        async with aiohttp.ClientSession() as session:
+        # Track 429 errors to trigger proxy rotation
+        consecutive_429s = 0
+        max_429s_before_rotation = 3
+        using_proxy = proxy_connector is not None
+        
+        async with aiohttp.ClientSession(connector=proxy_connector) as session:
             for i in range(0, len(urls), batch_size):
                 batch = urls[i:i + batch_size]
                 batch_num = i // batch_size + 1
                 print(f"   Processing batch {batch_num}/{total_batches} ({len(batch)} URLs)")
                 
-                batch_results = await self._process_url_batch(session, batch)
+                # Check if we need to rotate proxy due to rate limiting
+                if consecutive_429s >= max_429s_before_rotation:
+                    print(f"🔄 Too many consecutive 429s ({consecutive_429s}), attempting rotation...")
+                    
+                    if self.proxy_manager and using_proxy:
+                        try:
+                            # For Tor, try to rotate identity first
+                            if hasattr(self.proxy_manager, 'rotate_identity_on_rate_limit'):
+                                print("🔄 Attempting Tor identity rotation...")
+                                await self.proxy_manager.rotate_identity_on_rate_limit()
+                            
+                            # Get fresh proxy connector
+                            new_proxy_connector = await self.proxy_manager.get_proxy_connector()
+                            if new_proxy_connector:
+                                # Close current session and create new one
+                                await session.close()
+                                session = aiohttp.ClientSession(connector=new_proxy_connector)
+                                consecutive_429s = 0
+                                print("✅ Proxy rotated, continuing with new session")
+                            else:
+                                print("⚠️ Failed to get new proxy connector, switching to direct connection")
+                                # Fallback to direct connection
+                                await session.close()
+                                session = aiohttp.ClientSession()
+                                using_proxy = False
+                                consecutive_429s = 0
+                        except Exception as e:
+                            print(f"⚠️ Failed to rotate proxy: {e}, switching to direct connection")
+                            # Fallback to direct connection
+                            await session.close()
+                            session = aiohttp.ClientSession()
+                            using_proxy = False
+                            consecutive_429s = 0
+                    else:
+                        print("⚠️ No proxy available or already using direct connection, continuing with current session")
+                        # Just reset the counter and continue
+                        consecutive_429s = 0
+                
+                batch_results = await self._process_url_batch(session, batch, consecutive_429s)
                 content_data.update(batch_results)
+                
+                # Update 429 counter based on batch results
+                batch_429s = sum(1 for result in batch_results.values() if result.get('status_code') == 429)
+                if batch_429s > 0:
+                    consecutive_429s += batch_429s
+                    print(f"⚠️ Batch had {batch_429s} 429 errors, total consecutive: {consecutive_429s}")
+                else:
+                    consecutive_429s = 0  # Reset on success
                 
                 # Small delay between batches
                 await asyncio.sleep(0.5)
@@ -234,9 +422,9 @@ class SimplifiedChangeDetector:
         print(f"✅ Successfully processed {len(content_data)} URLs")
         return content_data
     
-    async def _process_url_batch(self, session: aiohttp.ClientSession, urls: List[str]) -> Dict[str, Any]:
+    async def _process_url_batch(self, session: aiohttp.ClientSession, urls: List[str], consecutive_429s: int = 0) -> Dict[str, Any]:
         """Process a batch of URLs to get content hashes."""
-        tasks = [self._get_single_url_content(session, url) for url in urls]
+        tasks = [self._get_single_url_content(session, url, consecutive_429s) for url in urls]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         content_data = {}
@@ -255,11 +443,33 @@ class SimplifiedChangeDetector:
         
         return content_data
     
-    async def _get_single_url_content(self, session: aiohttp.ClientSession, url: str) -> Dict[str, Any]:
-        """Get content hash for a single URL."""
+    async def _get_single_url_content(self, session: aiohttp.ClientSession, url: str, consecutive_429s: int = 0) -> Dict[str, Any]:
+        """Get content hash for a single URL with 429 handling."""
         try:
             async with session.get(url, timeout=15) as response:
-                if response.status != 200:
+                if response.status == 429:
+                    # Handle rate limiting
+                    self._consecutive_429s += 1
+                    self._last_429_time = datetime.now()
+                    
+                    # Calculate backoff time (exponential backoff)
+                    backoff_time = min(2 ** self._consecutive_429s, 30)  # Max 30 seconds
+                    print(f"⚠️ Rate limited (429) for {url}, backing off for {backoff_time}s")
+                    
+                    await asyncio.sleep(backoff_time)
+                    
+                    # Try again once
+                    async with session.get(url, timeout=15) as retry_response:
+                        if retry_response.status != 200:
+                            return {
+                                "error": f"HTTP {retry_response.status} (after 429 retry)",
+                                "hash": None,
+                                "content_length": 0,
+                                "status_code": retry_response.status,
+                                "extracted_at": datetime.now().isoformat()
+                            }
+                        content = await retry_response.text()
+                elif response.status != 200:
                     return {
                         "error": f"HTTP {response.status}",
                         "hash": None,
@@ -267,8 +477,10 @@ class SimplifiedChangeDetector:
                         "status_code": response.status,
                         "extracted_at": datetime.now().isoformat()
                     }
-                
-                content = await response.text()
+                else:
+                    content = await response.text()
+                    # Reset 429 counter on success
+                    self._consecutive_429s = 0
                 
                 # Extract main content
                 main_content = self._extract_main_content(content)
@@ -348,14 +560,29 @@ class SimplifiedChangeDetector:
         
         # Check for hash format mismatch (MD5 vs SHA256)
         if baseline_hashes and current_hashes:
-            sample_baseline_hash = next(iter(baseline_hashes.values())).get("hash", "")
-            sample_current_hash = next(iter(current_hashes.values())).get("hash", "")
+            # Find valid hash samples (not None)
+            sample_baseline_hash = None
+            sample_current_hash = None
             
-            # If baseline uses MD5 (32 chars) and current uses SHA256 (64 chars), treat as format mismatch
-            if len(sample_baseline_hash) == 32 and len(sample_current_hash) == 64:
-                print(f"⚠️ Hash format mismatch detected: baseline uses MD5, current uses SHA256")
-                print(f"🔄 Creating new baseline with SHA256 format...")
-                return []  # Return empty changes to trigger new baseline creation
+            # Get first valid baseline hash
+            for hash_data in baseline_hashes.values():
+                if isinstance(hash_data, dict) and hash_data.get("hash") is not None:
+                    sample_baseline_hash = hash_data.get("hash", "")
+                    break
+            
+            # Get first valid current hash
+            for hash_data in current_hashes.values():
+                if isinstance(hash_data, dict) and hash_data.get("hash") is not None:
+                    sample_current_hash = hash_data.get("hash", "")
+                    break
+            
+            # Only compare if we have valid hashes
+            if sample_baseline_hash and sample_current_hash:
+                # If baseline uses MD5 (32 chars) and current uses SHA256 (64 chars), treat as format mismatch
+                if len(sample_baseline_hash) == 32 and len(sample_current_hash) == 64:
+                    print(f"⚠️ Hash format mismatch detected: baseline uses MD5, current uses SHA256")
+                    print(f"🔄 Creating new baseline with SHA256 format...")
+                    return []  # Return empty changes to trigger new baseline creation
         
         # Detect new URLs
         new_urls = current_urls - baseline_urls
@@ -392,7 +619,21 @@ class SimplifiedChangeDetector:
                     "new_hash": current_hash
                 })
         
-        print(f"🔍 Detected changes: {len(changes)} total ({len(new_urls)} new, {len(deleted_urls)} deleted, {len([c for c in changes if c['change_type'] == 'modified_content'])} modified)")
+        # Add ignored files tracking
+        ignored_files = []
+        for url in current_urls:
+            if self._is_ignorable_file(url):
+                ignored_files.append({
+                    "url": url,
+                    "change_type": "ignored_file",
+                    "detected_at": datetime.now().isoformat(),
+                    "details": "Skipped: image/document file",
+                    "file_type": self._get_file_type(url)
+                })
+        
+        changes.extend(ignored_files)
+        
+        print(f"🔍 Detected changes: {len(changes)} total ({len(new_urls)} new, {len(deleted_urls)} deleted, {len([c for c in changes if c['change_type'] == 'modified_content'])} modified, {len(ignored_files)} ignored)")
         return changes
     
     def _should_create_new_baseline(self, baseline: Dict[str, Any], current_state: Dict[str, Any]) -> bool:
@@ -401,12 +642,27 @@ class SimplifiedChangeDetector:
         current_hashes = current_state.get("content_hashes", {})
         
         if baseline_hashes and current_hashes:
-            sample_baseline_hash = next(iter(baseline_hashes.values())).get("hash", "")
-            sample_current_hash = next(iter(current_hashes.values())).get("hash", "")
+            # Find valid hash samples (not None)
+            sample_baseline_hash = None
+            sample_current_hash = None
             
-            # If baseline uses MD5 (32 chars) and current uses SHA256 (64 chars), we should create a new baseline
-            if len(sample_baseline_hash) == 32 and len(sample_current_hash) == 64:
-                return True
+            # Get first valid baseline hash
+            for hash_data in baseline_hashes.values():
+                if isinstance(hash_data, dict) and hash_data.get("hash") is not None:
+                    sample_baseline_hash = hash_data.get("hash", "")
+                    break
+            
+            # Get first valid current hash
+            for hash_data in current_hashes.values():
+                if isinstance(hash_data, dict) and hash_data.get("hash") is not None:
+                    sample_current_hash = hash_data.get("hash", "")
+                    break
+            
+            # Only compare if we have valid hashes
+            if sample_baseline_hash and sample_current_hash:
+                # If baseline uses MD5 (32 chars) and current uses SHA256 (64 chars), we should create a new baseline
+                if len(sample_baseline_hash) == 32 and len(sample_current_hash) == 64:
+                    return True
         
         return False
     

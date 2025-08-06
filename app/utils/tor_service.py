@@ -209,12 +209,13 @@ KeepalivePeriod 300
             # Send SIGTERM
             try:
                 self.process.terminate()
-                await asyncio.wait_for(self.process.wait(), timeout=10)
+                # Use asyncio.to_thread to run the blocking wait() in a thread
+                await asyncio.wait_for(asyncio.to_thread(self.process.wait), timeout=10)
             except asyncio.TimeoutError:
                 # Force kill if it doesn't terminate
                 logger.warning("Force killing Tor process")
                 self.process.kill()
-                await self.process.wait()
+                await asyncio.to_thread(self.process.wait)
             
             self.process = None
         

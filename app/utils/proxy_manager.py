@@ -142,18 +142,15 @@ class ProxyManager:
             session_id = self._generate_session_id()
             proxy_url = self._build_proxy_url(session_id)
             
-            # Test the proxy before adding it
-            if await self._test_proxy(proxy_url):
-                session = ProxySession(
-                    proxy_url=proxy_url,
-                    created_at=time.time()
-                )
-                self.active_sessions.append(session)
-                logger.info(f"Created new proxy session: {proxy_url[:50]}...")
-                return session
-            else:
-                logger.warning(f"Proxy test failed for: {proxy_url[:50]}...")
-                return None
+            # For Tor, skip the test and just create the session
+            # The actual connection will be tested when used
+            session = ProxySession(
+                proxy_url=proxy_url,
+                created_at=time.time()
+            )
+            self.active_sessions.append(session)
+            logger.info(f"Created new proxy session: {proxy_url[:50]}...")
+            return session
                 
         except Exception as e:
             logger.error(f"Failed to create proxy session: {e}")
@@ -162,15 +159,17 @@ class ProxyManager:
     async def _test_proxy(self, proxy_url: str) -> bool:
         """Test if a proxy is working."""
         try:
-            timeout = aiohttp.ClientTimeout(total=10)
+            timeout = aiohttp.ClientTimeout(total=15)
             
             # Try different approaches for SOCKS5
             try:
                 from aiohttp_socks import ProxyConnector
                 connector = ProxyConnector.from_url(proxy_url)
+                logger.debug(f"Created SOCKS5 connector for: {proxy_url}")
             except ImportError:
                 try:
                     connector = aiohttp.ProxyConnector.from_url(proxy_url)
+                    logger.debug(f"Created HTTP proxy connector for: {proxy_url}")
                 except AttributeError:
                     logger.warning("SOCKS5 support not available")
                     return False
@@ -179,11 +178,26 @@ class ProxyManager:
                 timeout=timeout,
                 connector=connector
             ) as session:
-                # Test with a simple request
-                async with session.get('http://httpbin.org/ip', timeout=5) as response:
-                    if response.status == 200:
-                        return True
-            return False
+                # Test with multiple URLs in case one is blocked
+                test_urls = [
+                    'http://httpbin.org/ip',
+                    'http://ip-api.com/json',
+                    'http://api.ipify.org?format=json'
+                ]
+                
+                for test_url in test_urls:
+                    try:
+                        logger.debug(f"Testing proxy with: {test_url}")
+                        async with session.get(test_url, timeout=10) as response:
+                            if response.status == 200:
+                                logger.debug(f"Proxy test successful with: {test_url}")
+                                return True
+                    except Exception as e:
+                        logger.debug(f"Proxy test failed with {test_url}: {e}")
+                        continue
+                
+                logger.warning(f"All proxy tests failed for: {proxy_url}")
+                return False
         except Exception as e:
             logger.debug(f"Proxy test failed: {e}")
             return False
@@ -281,15 +295,17 @@ class TorProxyManager(ProxyManager):
         """Test Tor proxy connectivity."""
         try:
             # Test if Tor is running and accessible
-            timeout = aiohttp.ClientTimeout(total=10)
+            timeout = aiohttp.ClientTimeout(total=15)
             
             # Try different approaches for SOCKS5
             try:
                 from aiohttp_socks import ProxyConnector
                 connector = ProxyConnector.from_url(proxy_url)
+                logger.debug(f"Created Tor SOCKS5 connector for: {proxy_url}")
             except ImportError:
                 try:
                     connector = aiohttp.ProxyConnector.from_url(proxy_url)
+                    logger.debug(f"Created Tor HTTP proxy connector for: {proxy_url}")
                 except AttributeError:
                     logger.warning("SOCKS5 support not available")
                     return False
@@ -298,11 +314,26 @@ class TorProxyManager(ProxyManager):
                 timeout=timeout,
                 connector=connector
             ) as session:
-                # Test with a simple request
-                async with session.get('http://httpbin.org/ip', timeout=10) as response:
-                    if response.status == 200:
-                        return True
-            return False
+                # Test with multiple URLs in case one is blocked
+                test_urls = [
+                    'http://httpbin.org/ip',
+                    'http://ip-api.com/json',
+                    'http://api.ipify.org?format=json'
+                ]
+                
+                for test_url in test_urls:
+                    try:
+                        logger.debug(f"Testing Tor proxy with: {test_url}")
+                        async with session.get(test_url, timeout=10) as response:
+                            if response.status == 200:
+                                logger.debug(f"Tor proxy test successful with: {test_url}")
+                                return True
+                    except Exception as e:
+                        logger.debug(f"Tor proxy test failed with {test_url}: {e}")
+                        continue
+                
+                logger.warning(f"All Tor proxy tests failed for: {proxy_url}")
+                return False
         except Exception as e:
             logger.debug(f"Tor proxy test failed: {e}")
             return False
@@ -310,40 +341,51 @@ class TorProxyManager(ProxyManager):
     async def renew_tor_identity(self) -> bool:
         """Renew Tor identity to get a new IP address."""
         try:
-            if not self.control_password:
-                logger.warning("Tor control password not set, cannot renew identity")
+            if not self.control_password or self.control_password == "your_tor_control_password":
+                logger.warning("Tor control password not properly configured, cannot renew identity")
+                logger.info("To enable Tor identity rotation, set TOR_CONTROL_PASSWORD environment variable")
                 return False
             
             # Connect to Tor control port
-            reader, writer = await asyncio.open_connection(
-                self.config.host, self.control_port
-            )
-            
-            # Authenticate
-            auth_command = f'AUTHENTICATE "{self.control_password}"\r\n'
-            writer.write(auth_command.encode())
-            await writer.drain()
-            
-            response = await reader.read(1024)
-            if b'250 OK' not in response:
-                logger.error(f"Tor authentication failed: {response}")
+            try:
+                reader, writer = await asyncio.open_connection(
+                    self.config.host, self.control_port
+                )
+            except ConnectionRefusedError:
+                logger.error(f"Tor control port {self.control_port} is not accessible")
+                logger.info("Make sure Tor is running with ControlPort enabled in torrc")
+                return False
+            except Exception as e:
+                logger.error(f"Failed to connect to Tor control port: {e}")
                 return False
             
-            # Signal new identity
-            signal_command = b'SIGNAL NEWNYM\r\n'
-            writer.write(signal_command)
-            await writer.drain()
-            
-            response = await reader.read(1024)
-            if b'250 OK' in response:
-                logger.info("Successfully renewed Tor identity")
-                self.circuit_count += 1
+            try:
+                # Authenticate
+                auth_command = f'AUTHENTICATE "{self.control_password}"\r\n'
+                writer.write(auth_command.encode())
+                await writer.drain()
+                
+                response = await reader.read(1024)
+                if b'250 OK' not in response:
+                    logger.error(f"Tor authentication failed: {response}")
+                    return False
+                
+                # Signal new identity
+                signal_command = b'SIGNAL NEWNYM\r\n'
+                writer.write(signal_command)
+                await writer.drain()
+                
+                response = await reader.read(1024)
+                if b'250 OK' in response:
+                    logger.info("Successfully renewed Tor identity")
+                    self.circuit_count += 1
+                    return True
+                else:
+                    logger.error(f"Failed to renew Tor identity: {response}")
+                    return False
+            finally:
                 writer.close()
                 await writer.wait_closed()
-                return True
-            else:
-                logger.error(f"Failed to renew Tor identity: {response}")
-                return False
                 
         except Exception as e:
             logger.error(f"Error renewing Tor identity: {e}")
@@ -383,6 +425,21 @@ class TorProxyManager(ProxyManager):
         
         return await super()._create_new_session()
     
+    async def rotate_identity_on_rate_limit(self):
+        """Rotate Tor identity when we hit rate limits."""
+        try:
+            logger.info("🔄 Rotating Tor identity due to rate limiting...")
+            if await self.renew_tor_identity():
+                self.circuit_count = 0
+                logger.info("✅ Tor identity rotated successfully")
+                return True
+            else:
+                logger.warning("⚠️ Failed to rotate Tor identity")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error rotating Tor identity: {e}")
+            return False
+    
     def get_session_stats(self) -> Dict[str, Any]:
         """Get enhanced statistics for Tor usage."""
         stats = super().get_session_stats()
@@ -398,12 +455,15 @@ async def create_proxy_manager_from_env() -> Optional[ProxyManager]:
     """Create proxy manager from environment variables."""
     provider_name = os.getenv('PROXY_PROVIDER')
     if not provider_name:
+        logger.warning("⚠️ No PROXY_PROVIDER environment variable set")
+        logger.info("💡 Set PROXY_PROVIDER=tor to enable Tor proxy")
         return None
     
     try:
         provider = ProxyProvider(provider_name.lower())
     except ValueError:
         logger.error(f"Unknown proxy provider: {provider_name}")
+        logger.info("💡 Supported providers: tor, bright_data, oxylabs, proxymesh, storm_proxies")
         return None
     
     config = ProxyConfig(
@@ -422,19 +482,24 @@ async def create_proxy_manager_from_env() -> Optional[ProxyManager]:
     
     if provider == ProxyProvider.TOR:
         # Initialize Tor service if not already running
-        from utils.tor_service import get_tor_service, initialize_tor_service
+        from app.utils.tor_service import get_tor_service, initialize_tor_service
         
         tor_service = get_tor_service()
         if not tor_service:
+            logger.info("🔄 Initializing Tor service...")
             tor_service = await initialize_tor_service()
             if not tor_service:
                 logger.error("❌ Failed to initialize Tor service")
+                logger.info("💡 Make sure Tor Browser is installed and running")
                 return None
         
         # Ensure Tor is running
         if not await tor_service.health_check():
             logger.error("❌ Tor service is not healthy")
+            logger.info("💡 Restart Tor Browser and try again")
             return None
+        
+        logger.info("✅ Tor service initialized successfully")
         
         return TorProxyManager(
             host=os.getenv('TOR_HOST', '127.0.0.1'),

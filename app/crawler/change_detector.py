@@ -403,6 +403,18 @@ class ChangeDetector:
             
             print(f"✅ Baseline updated: {baseline_file}")
             
+            # Log the baseline update event
+            self.baseline_manager._log_baseline_event("baseline_updated", site_config.name, {
+                "file_path": baseline_file,
+                "changes_applied": len(change_result.changes),
+                "new_urls": len([c for c in change_result.changes if c.get("change_type") == "new"]),
+                "modified_urls": len([c for c in change_result.changes if c.get("change_type") == "modified"]),
+                "deleted_urls": len([c for c in change_result.changes if c.get("change_type") == "deleted"]),
+                "previous_baseline_date": current_baseline.get("baseline_date") if current_baseline else None,
+                "baseline_date": new_baseline.get("baseline_date"),
+                "evolution_type": "automatic_update"
+            })
+            
             # Validate the merge result
             validation_result = self.baseline_manager.merger.validate_merge_result(
                 current_baseline, new_baseline, change_result.changes
