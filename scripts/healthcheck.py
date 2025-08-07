@@ -1,11 +1,32 @@
 #!/usr/bin/env python3
-"""
-Simple healthcheck script for testing the application
-"""
+# ==============================================================================
+# healthcheck.py — Simple healthcheck script for testing the application
+# ==============================================================================
+# Purpose: Test application endpoints and provide health status
+# Sections: Imports, Public Exports, Helper Functions, Main Function
+# ==============================================================================
 
-import requests
+# ==============================================================================
+# Imports
+# ==============================================================================
+
+# Standard Library -----
 import sys
-import time
+
+# Third-Party -----
+import requests
+
+# ==============================================================================
+# Public exports
+# ==============================================================================
+__all__ = [
+    'check_endpoint',
+    'main'
+]
+
+# ==============================================================================
+# Helper Functions
+# ==============================================================================
 
 def check_endpoint(url, endpoint, expected_status=200):
     """Check if an endpoint is responding correctly."""
@@ -24,22 +45,26 @@ def check_endpoint(url, endpoint, expected_status=200):
                 print(f"   Response: {response.text[:100]}...")
             return True
         else:
-            print(f"❌ {endpoint} - Status: {response.status_code}")
+            print(f"[ X ] {endpoint} - Status: {response.status_code}")
             print(f"   Response: {response.text}")
             return False
             
     except requests.exceptions.RequestException as e:
-        print(f"❌ {endpoint} - Error: {e}")
+        print(f"[ X ] {endpoint} - Error: {e}")
         return False
 
+# ==============================================================================
+# Main Function
+# ==============================================================================
+
 def main():
-    # Get base URL from command line or use default
+    # get base URL from command line or use default
     base_url = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
     
     print(f"🔍 Healthcheck for {base_url}")
     print("=" * 50)
     
-    # Check basic endpoints
+    # check basic endpoints
     endpoints = [
         ("/ping", 200),
         ("/health", 200),
@@ -54,13 +79,13 @@ def main():
             all_passed = False
         print()
     
-    # Summary
+    # summary
     print("=" * 50)
     if all_passed:
         print("✅ All healthchecks passed!")
         sys.exit(0)
     else:
-        print("❌ Some healthchecks failed!")
+        print("[ X ] Some healthchecks failed!")
         sys.exit(1)
 
 if __name__ == "__main__":

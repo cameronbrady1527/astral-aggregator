@@ -1,14 +1,32 @@
 #!/usr/bin/env python3
-"""
-Consolidated startup script for Astral Aggregator
-Handles both local development and Railway deployment
-"""
+# ==============================================================================
+# start.py — Consolidated startup script for Astral Aggregator
+# ==============================================================================
+# Purpose: Handle both local development and Railway deployment startup
+# Sections: Imports, Public Exports, Main Function
+# ==============================================================================
 
-import os
-import sys
-import subprocess
+# ==============================================================================
+# Imports
+# ==============================================================================
+
+# Standard Library -----
 import logging
+import os
+import subprocess
+import sys
 import time
+
+# ==============================================================================
+# Public exports
+# ==============================================================================
+__all__ = [
+    'main'
+]
+
+# ==============================================================================
+# Main Function
+# ==============================================================================
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,7 +35,7 @@ logger = logging.getLogger(__name__)
 def main():
     logger.info("🚀 Starting Astral Aggregator...")
     
-    # Environment detection
+    # environment detection
     current_dir = os.getcwd()
     is_railway = os.environ.get('RAILWAY_ENVIRONMENT') is not None
     
@@ -26,11 +44,11 @@ def main():
     else:
         logger.info("📍 Detected local environment")
     
-    # Environment setup
+    # environment setup
     logger.info(f"Current directory: {current_dir}")
     logger.info(f"Python version: {sys.version}")
     
-    # Railway environment variables
+    # railway environment variables
     port = os.environ.get('PORT', '8000')
     railway_env = os.environ.get('RAILWAY_ENVIRONMENT', 'unknown')
     railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'unknown')
@@ -40,7 +58,7 @@ def main():
     logger.info(f"Port: {port}")
     logger.info(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'NOT SET')}")
     
-    # Set PYTHONPATH if not already set (respect Docker environment)
+    # set PYTHONPATH if not already set (respect Docker environment)
     if not os.environ.get('PYTHONPATH'):
         os.environ['PYTHONPATH'] = current_dir
         logger.info(f"PYTHONPATH set to: {current_dir}")
@@ -49,40 +67,40 @@ def main():
     
     os.environ['PYTHONUNBUFFERED'] = '1'
     
-    # Railway-specific environment variables
+    # railway-specific environment variables
     if is_railway:
         os.environ['LOG_LEVEL'] = 'INFO'
         os.environ['PYTHONHASHSEED'] = 'random'
         os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
         logger.info("✅ Railway environment variables set")
     
-    # Create output directory
+    # create output directory
     try:
         os.makedirs('output', exist_ok=True)
         logger.info("✅ Output directory created")
     except Exception as e:
         logger.warning(f"⚠️ Could not create output directory: {e}")
     
-    # Test basic imports before starting
+    # test basic imports before starting
     try:
         logger.info("Testing basic imports...")
         import fastapi
         import uvicorn
         logger.info("✅ Basic imports successful")
     except ImportError as e:
-        logger.error(f"❌ Basic import failed: {e}")
+        logger.error(f"[ X ] Basic import failed: {e}")
         sys.exit(1)
     
-    # Validate port
+    # validate port
     if not port.isdigit():
         logger.warning(f"⚠️ Invalid PORT '{port}', using default 8000")
         port = '8000'
     
     logger.info(f"🎯 Using port: {port}")
     
-    # Build uvicorn command with environment-specific settings
+    # build uvicorn command with environment-specific settings
     if is_railway:
-        # Railway-optimized settings - minimal and reliable
+        # railway-optimized settings - minimal and reliable
         cmd = [
             sys.executable, '-m', 'uvicorn',
             'app.main:app',
@@ -95,7 +113,7 @@ def main():
             '--limit-max-requests', '500'
         ]
     else:
-        # Local development settings with more features
+        # local development settings with more features
         cmd = [
             sys.executable, '-m', 'uvicorn',
             'app.main:app',
@@ -118,13 +136,13 @@ def main():
             subprocess.run(cmd, check=True)
             break
         except subprocess.CalledProcessError as e:
-            logger.error(f"❌ Uvicorn failed to start (attempt {attempt + 1}): {e}")
+            logger.error(f"[ X ] Uvicorn failed to start (attempt {attempt + 1}): {e}")
             if attempt < max_retries - 1:
                 wait_time = 5 * (attempt + 1)
                 logger.info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
             else:
-                logger.error("❌ All startup attempts failed")
+                logger.error("[ X ] All startup attempts failed")
                 sys.exit(1)
         except KeyboardInterrupt:
             logger.info("🛑 Shutdown requested")

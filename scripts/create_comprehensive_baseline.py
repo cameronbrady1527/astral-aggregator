@@ -1,31 +1,50 @@
 #!/usr/bin/env python3
-"""
-Comprehensive Baseline Creator - Create complete baselines for change detection
-This script creates baselines with URLs, content hashes, and all metadata needed
-for accurate change detection.
-"""
+# ==============================================================================
+# create_comprehensive_baseline.py — Create complete baselines for change detection
+# ==============================================================================
+# Purpose: Create baselines with URLs, content hashes, and metadata for change detection
+# Sections: Imports, Public Exports, MockSiteConfig Class, ComprehensiveBaselineCreator Class, Main Functions
+# ==============================================================================
 
+# ==============================================================================
+# Imports
+# ==============================================================================
+
+# Standard Library -----
 import asyncio
+import hashlib
 import json
 import sys
-import os
-import hashlib
-from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# Third-Party -----
 import aiohttp
 from bs4 import BeautifulSoup
 
+# Internal -----
 # Add the app directory to the path
 sys.path.insert(0, str(Path(__file__).parent.parent / "app"))
-
 from crawler.sitemap_detector import SitemapDetector
 
+# ==============================================================================
+# Public exports
+# ==============================================================================
+__all__ = [
+    'MockSiteConfig',
+    'ComprehensiveBaselineCreator',
+    'main'
+]
+
+# ==============================================================================
+# MockSiteConfig Class
+# ==============================================================================
 
 class MockSiteConfig:
     """Mock site configuration for testing."""
     def __init__(self, site_id: str = None):
-        # Default to Judiciary UK if no site_id provided
+        # default to Judiciary UK if no site_id provided
         if site_id == "judiciary_uk" or site_id is None:
             self.name = "Judiciary UK"
             self.url = "https://www.judiciary.uk/"
@@ -35,7 +54,7 @@ class MockSiteConfig:
             self.url = "https://www.waverley.gov.uk/"
             self.sitemap_url = "https://www.waverley.gov.uk/sitemap.xml"
         else:
-            # Generic configuration for unknown sites
+            # generic configuration for unknown sites
             self.name = site_id.replace("_", " ").title() if site_id else "Unknown Site"
             self.url = f"https://{site_id.replace('_', '.')}/" if site_id else "https://example.com/"
             self.sitemap_url = f"https://{site_id.replace('_', '.')}/sitemap.xml" if site_id else "https://example.com/sitemap.xml"
@@ -62,25 +81,25 @@ class ComprehensiveBaselineCreator:
             await self.session.close()
     
     async def create_baseline(self, site_id: str, max_urls: int = None) -> Dict[str, Any]:
-        """Create a comprehensive baseline for a site."""
+        """Create a comprehensive baseline for a site with URLs and content hashes."""
         print(f"🔧 Creating comprehensive baseline for {site_id}...")
         
-        # Step 1: Get sitemap URLs
+        # step 1: get sitemap URLs
         print("📋 Step 1: Fetching sitemap URLs...")
         sitemap_state = await self.detector.get_current_state()
         
         if not sitemap_state.get('urls'):
-            print("❌ Failed to fetch sitemap URLs")
+            print("[ X ] Failed to fetch sitemap URLs")
             return None
         
         urls = sitemap_state['urls']
         print(f"✅ Found {len(urls)} URLs in sitemap")
         
-        # Step 2: Get content hashes for all URLs
+        # step 2: get content hashes for all URLs
         print("🔍 Step 2: Calculating content hashes...")
         content_data = await self._get_content_hashes(urls, max_urls)
         
-        # Step 3: Create comprehensive baseline
+        # step 3: create comprehensive baseline
         print("💾 Step 3: Creating baseline file...")
         baseline_data = {
             "site_id": site_id,
@@ -92,13 +111,13 @@ class ComprehensiveBaselineCreator:
             "total_urls": len(urls),
             "total_content_hashes": len(content_data),
             
-            # Sitemap data
+            # sitemap data
             "sitemap_state": sitemap_state,
             
-            # Content data
+            # content data
             "content_hashes": content_data,
             
-            # Metadata
+            # metadata
             "metadata": {
                 "creation_method": "comprehensive_baseline_creator",
                 "content_hash_algorithm": "sha256",
@@ -119,8 +138,8 @@ class ComprehensiveBaselineCreator:
             check_urls = urls
         content_data = {}
         
-        # Process URLs in batches
-        batch_size = 20  # Increased batch size for efficiency
+        # process URLs in batches
+        batch_size = 20  # increased batch size for efficiency
         total_batches = (len(check_urls) + batch_size - 1) // batch_size
         
         for i in range(0, len(check_urls), batch_size):
@@ -131,7 +150,7 @@ class ComprehensiveBaselineCreator:
             batch_results = await self._process_url_batch(batch)
             content_data.update(batch_results)
             
-            # Small delay between batches to be respectful to the server
+            # small delay between batches to be respectful to the server
             await asyncio.sleep(0.5)
         
         print(f"✅ Successfully processed {len(content_data)} URLs")
@@ -173,10 +192,10 @@ class ComprehensiveBaselineCreator:
                 
                 content = await response.text()
                 
-                # Extract main content (remove navigation, footer, etc.)
+                # extract main content (remove navigation, footer, etc.)
                 main_content = self._extract_main_content(content)
                 
-                # Calculate hash
+                # calculate hash
                 content_hash = hashlib.sha256(main_content.encode('utf-8')).hexdigest()
                 
                 return {
@@ -201,11 +220,11 @@ class ComprehensiveBaselineCreator:
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
             
-            # Remove unwanted elements
+            # remove unwanted elements
             for element in soup(['nav', 'footer', '.sidebar', '.ads', '.comments', '.header', '.menu', 'script', 'style']):
                 element.decompose()
             
-            # Try to find main content areas
+            # try to find main content areas
             main_selectors = [
                 'main',
                 'article',
@@ -223,17 +242,17 @@ class ComprehensiveBaselineCreator:
                     main_content = element.get_text(separator=' ', strip=True)
                     break
             
-            # If no main content found, use body text
+            # if no main content found, use body text
             if not main_content:
                 main_content = soup.get_text(separator=' ', strip=True)
             
-            # Clean up whitespace
+            # clean up whitespace
             main_content = ' '.join(main_content.split())
             
             return main_content
             
         except Exception:
-            # Fallback: return first 1000 characters of text
+            # fallback: return first 1000 characters of text
             return ' '.join(html_content.split())[:1000]
     
     async def save_baseline(self, baseline_data: Dict[str, Any], site_id: str) -> str:
@@ -249,7 +268,7 @@ class ComprehensiveBaselineCreator:
         with open(baseline_file, 'w', encoding='utf-8') as f:
             json.dump(baseline_data, f, indent=2, ensure_ascii=False)
         
-        # Create baseline event for dashboard integration
+        # create baseline event for dashboard integration
         await self._create_baseline_event(site_id, baseline_data, str(baseline_file))
         
         print(f"✅ Baseline saved successfully!")
@@ -263,7 +282,7 @@ class ComprehensiveBaselineCreator:
     async def _create_baseline_event(self, site_id: str, baseline_data: Dict[str, Any], file_path: str):
         """Create baseline event for dashboard integration."""
         try:
-            # Load existing events
+            # load existing events
             events_file = Path("baselines/baseline_events.json")
             events = []
             
@@ -271,7 +290,7 @@ class ComprehensiveBaselineCreator:
                 with open(events_file, 'r', encoding='utf-8') as f:
                     events = json.load(f)
             
-            # Create new event
+            # create new event
             event = {
                 "timestamp": datetime.now().isoformat(),
                 "event_type": "baseline_created",
@@ -285,14 +304,14 @@ class ComprehensiveBaselineCreator:
                 }
             }
             
-            # Add to events
+            # add to events
             events.append(event)
             
-            # Keep only last 100 events
+            # keep only last 100 events
             if len(events) > 100:
                 events = events[-100:]
             
-            # Save events
+            # save events
             with open(events_file, 'w', encoding='utf-8') as f:
                 json.dump(events, f, indent=2, ensure_ascii=False)
             
@@ -309,30 +328,30 @@ class ComprehensiveBaselineCreator:
             with open(baseline_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # Check required fields
+            # check required fields
             required_fields = ['site_id', 'sitemap_state', 'content_hashes', 'total_urls', 'total_content_hashes']
             for field in required_fields:
                 if field not in data:
-                    print(f"❌ Missing required field: {field}")
+                    print(f"[ X ] Missing required field: {field}")
                     return False
             
-            # Check data consistency
+            # check data consistency
             urls_count = len(data['sitemap_state']['urls'])
             hashes_count = len(data['content_hashes'])
             
             if urls_count != data['total_urls']:
-                print(f"❌ URL count mismatch: {urls_count} vs {data['total_urls']}")
+                print(f"[ X ] URL count mismatch: {urls_count} vs {data['total_urls']}")
                 return False
             
             if hashes_count != data['total_content_hashes']:
-                print(f"❌ Hash count mismatch: {hashes_count} vs {data['total_content_hashes']}")
+                print(f"[ X ] Hash count mismatch: {hashes_count} vs {data['total_content_hashes']}")
                 return False
             
             print("✅ Baseline verification successful!")
             return True
             
         except Exception as e:
-            print(f"❌ Baseline verification failed: {e}")
+            print(f"[ X ] Baseline verification failed: {e}")
             return False
 
 
@@ -340,8 +359,8 @@ async def reset_dashboard():
     """Reset the dashboard to start fresh."""
     print("🔄 Resetting dashboard...")
     
-    # Clear any existing change detection state
-    # This would typically involve clearing database records or resetting counters
+    # clear any existing change detection state
+    # this would typically involve clearing database records or resetting counters
     print("✅ Dashboard reset complete (no existing state to clear)")
 
 
@@ -359,22 +378,22 @@ async def main():
     
     print("🚀 Starting comprehensive baseline creation...")
     
-    # Step 1: Reset dashboard
+    # step 1: reset dashboard
     await reset_dashboard()
     
-    # Step 2: Create baseline
+    # step 2: create baseline
     site_config = MockSiteConfig(site_id)
     async with ComprehensiveBaselineCreator(site_config) as creator:
         baseline_data = await creator.create_baseline(site_id, max_urls)
         
         if not baseline_data:
-            print("❌ Failed to create baseline")
+            print("[ X ] Failed to create baseline")
             return 1
         
-        # Step 3: Save baseline
+        # step 3: save baseline
         baseline_file = await creator.save_baseline(baseline_data, site_id)
         
-        # Step 4: Verify baseline
+        # step 4: verify baseline
         success = await creator.verify_baseline(baseline_file)
         
         if success:
@@ -387,7 +406,7 @@ async def main():
             print(f"   3. Verify that initial detection shows 0 changes")
             return 0
         else:
-            print("❌ Baseline verification failed")
+            print("[ X ] Baseline verification failed")
             return 1
 
 

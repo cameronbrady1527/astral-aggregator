@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
-"""
-Automated Change Monitor - Continuous monitoring using comprehensive baseline
-This script provides automated change detection with scheduling and notifications.
-"""
+# ==============================================================================
+# automated_monitor.py — Continuous monitoring using comprehensive baseline
+# ==============================================================================
+# Purpose: Provide automated change detection with scheduling and notifications
+# Sections: Imports, Public Exports, MockSiteConfig Class, AutomatedMonitor Class, Main Function
+# ==============================================================================
 
+# ==============================================================================
+# Imports
+# ==============================================================================
+
+# Standard Library -----
 import asyncio
-import json
-import sys
-import os
-import time
-import schedule
-from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
-import aiohttp
-from bs4 import BeautifulSoup
 import hashlib
+import json
+import os
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+# Third-Party -----
+import aiohttp
+import schedule
+from bs4 import BeautifulSoup
+
+# Internal -----
 # Add the app directory to the path
 app_path = Path(__file__).parent.parent / "app"
 sys.path.insert(0, str(app_path))
@@ -24,6 +33,18 @@ sys.path.insert(0, str(app_path))
 # Import from the crawler package
 from app.crawler.sitemap_detector import SitemapDetector
 
+# ==============================================================================
+# Public exports
+# ==============================================================================
+__all__ = [
+    'MockSiteConfig',
+    'AutomatedMonitor',
+    'main'
+]
+
+# ==============================================================================
+# MockSiteConfig Class
+# ==============================================================================
 
 class MockSiteConfig:
     """Mock site configuration for testing."""
@@ -51,7 +72,7 @@ class AutomatedMonitor:
         self.total_changes_detected = 0
     
     def _get_default_config(self) -> Dict[str, Any]:
-        """Get default monitoring configuration."""
+        """Get default monitoring configuration with intervals and limits."""
         return {
             "check_interval_minutes": 60,  # Check every hour
             "max_urls_to_check": 50,  # Limit URLs to check per run
@@ -78,23 +99,23 @@ class AutomatedMonitor:
         print(f"⏰ Check interval: {self.config['check_interval_minutes']} minutes")
         print(f"🔍 Max URLs per check: {self.config['max_urls_to_check']}")
         
-        # Load baseline
+        # load baseline
         self.baseline_data = await self._load_baseline()
         if not self.baseline_data:
-            print("❌ Failed to load baseline. Monitoring cannot start.")
+            print("[ X ] Failed to load baseline. Monitoring cannot start.")
             return False
         
         self.monitoring_active = True
         
-        # Schedule the monitoring job
+        # schedule the monitoring job
         schedule.every(self.config['check_interval_minutes']).minutes.do(
             lambda: asyncio.create_task(self._run_check())
         )
         
-        # Run initial check
+        # run initial check
         await self._run_check()
         
-        # Start the monitoring loop
+        # start the monitoring loop
         await self._monitoring_loop()
         
         return True
@@ -131,7 +152,7 @@ class AutomatedMonitor:
             await self._save_monitoring_stats()
             
         except Exception as e:
-            print(f"❌ Error during check: {e}")
+            print(f"[ X ] Error during check: {e}")
             if self.config['retry_on_failure']:
                 await self._retry_check()
     
@@ -146,7 +167,7 @@ class AutomatedMonitor:
             print(f"   Error in sitemap: {current_sitemap['error']}")
         
         if not current_sitemap.get('urls'):
-            print("❌ Warning: Current sitemap returned 0 URLs. Using baseline URLs.")
+            print("[ X ] Warning: Current sitemap returned 0 URLs. Using baseline URLs.")
             current_sitemap['urls'] = self.baseline_data['sitemap_state']['urls']
         
         # Compare sitemap URLs
@@ -220,7 +241,7 @@ class AutomatedMonitor:
             return data
             
         except Exception as e:
-            print(f"❌ Failed to load baseline: {e}")
+            print(f"[ X ] Failed to load baseline: {e}")
             return None
     
     async def _analyze_new_urls(self, urls: List[str]) -> List[Dict[str, Any]]:
@@ -451,9 +472,9 @@ class AutomatedMonitor:
                 await self._run_check()
                 return
             except Exception as e:
-                print(f"❌ Retry attempt {attempt + 1} failed: {e}")
+                print(f"[ X ] Retry attempt {attempt + 1} failed: {e}")
         
-        print("❌ All retry attempts failed")
+        print("[ X ] All retry attempts failed")
     
     async def _save_monitoring_stats(self):
         """Save monitoring statistics."""
@@ -481,7 +502,7 @@ async def main():
     check_interval = int(sys.argv[2]) if len(sys.argv) > 2 else 60
     
     if not os.path.exists(baseline_file):
-        print(f"❌ Baseline file not found: {baseline_file}")
+        print(f"[ X ] Baseline file not found: {baseline_file}")
         return 1
     
     # Configuration
@@ -504,7 +525,7 @@ async def main():
             print("✅ Monitoring completed successfully")
             return 0
         else:
-            print("❌ Monitoring failed to start")
+            print("[ X ] Monitoring failed to start")
             return 1
 
 

@@ -1,20 +1,40 @@
 #!/usr/bin/env python3
-"""
-Baseline Management Script
-Manages baseline retention, cleanup, and provides baseline information.
-"""
+# ==============================================================================
+# manage_baselines.py — Baseline management script
+# ==============================================================================
+# Purpose: Manage baseline retention, cleanup, and provide baseline information
+# Sections: Imports, Public Exports, BaselineManager Class, Main Function
+# ==============================================================================
 
-import sys
-import os
+# ==============================================================================
+# Imports
+# ==============================================================================
+
+# Standard Library -----
 import json
+import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
+# Internal -----
 # Add the app directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app.utils.config import ConfigManager
+
+# ==============================================================================
+# Public exports
+# ==============================================================================
+__all__ = [
+    'BaselineManager',
+    'main'
+]
+
+# ==============================================================================
+# BaselineManager Class
+# ==============================================================================
 
 class BaselineManager:
     """Manages baseline files and retention policies."""
@@ -25,7 +45,7 @@ class BaselineManager:
         self.baseline_dir.mkdir(exist_ok=True)
     
     def list_baselines(self, site_id: str = None) -> Dict[str, List[str]]:
-        """List all available baselines."""
+        """List all available baselines with optional site filtering."""
         baselines = {}
         
         for baseline_file in self.baseline_dir.glob("*_baseline.json"):
@@ -41,14 +61,14 @@ class BaselineManager:
                         baselines[file_site_id] = []
                     baselines[file_site_id].append(date)
         
-        # Sort dates for each site
+        # sort dates for each site
         for site in baselines:
             baselines[site].sort()
         
         return baselines
     
     def get_baseline_info(self, site_id: str, date: str) -> Dict[str, Any]:
-        """Get information about a specific baseline."""
+        """Get information about a specific baseline with file size and metadata."""
         baseline_path = self.baseline_dir / f"{site_id}_{date}_baseline.json"
         
         if not baseline_path.exists():
@@ -72,7 +92,7 @@ class BaselineManager:
             return {"error": f"Error reading baseline: {e}"}
     
     def cleanup_old_baselines(self, days_to_keep: int = 30) -> Dict[str, Any]:
-        """Clean up baselines older than specified days."""
+        """Clean up baselines older than specified days with size tracking."""
         cutoff_date = datetime.now() - timedelta(days=days_to_keep)
         cutoff_date_str = cutoff_date.strftime("%Y%m%d")
         
@@ -94,7 +114,7 @@ class BaselineManager:
                         deleted_files.append(filename)
                         total_size_freed += file_size
                 except ValueError:
-                    # Skip files with invalid date format
+                    # skip files with invalid date format
                     continue
         
         return {
@@ -165,6 +185,10 @@ class BaselineManager:
             print("\nPer-site breakdown:")
             for site_id, site_stat in stats['site_stats'].items():
                 print(f"  {site_id}: {site_stat['count']} files, {site_stat['size_mb']} MB")
+
+# ==============================================================================
+# Main Function
+# ==============================================================================
 
 def main():
     """Main function for baseline management."""

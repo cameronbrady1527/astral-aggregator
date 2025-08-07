@@ -2,7 +2,7 @@
 # listeners.py — API Endpoints for Change Detection Listeners
 # ==============================================================================
 # Purpose: Provide endpoints for triggering and monitoring change detection
-# Sections: Imports, Router Configuration, API Endpoints
+# Sections: Imports, Public Exports, Router Configuration, API Endpoints
 # ==============================================================================
 
 # ==============================================================================
@@ -12,15 +12,24 @@
 # Standard Library -----
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-import json
+from typing import Any, Dict, List, Optional
 
 # Third-Party -----
 from fastapi import APIRouter, HTTPException, Query
 
 # Internal -----
 from ..crawler.change_detector import ChangeDetector
+
+# ==============================================================================
+# Public exports
+# ==============================================================================
+__all__ = [
+    'router',
+    'get_change_detector',
+    'update_detection_status',
+    'current_detection_status'
+]
 
 # ==============================================================================
 # Router Configuration
@@ -55,7 +64,7 @@ def get_change_detector() -> ChangeDetector:
         try:
             _change_detector = ChangeDetector()
         except Exception as e:
-            # If initialization fails, create a minimal detector for basic endpoints
+            # fallback: create minimal detector for basic endpoints
             print(f"Warning: ChangeDetector initialization failed: {e}")
             _change_detector = None
     return _change_detector
@@ -186,16 +195,7 @@ async def trigger_info() -> Dict[str, Any]:
 
 @router.post("/trigger/{site_id}")
 async def trigger_site_detection(site_id: str, use_simplified: bool = Query(default=True, description="Use simplified change detector for better performance")) -> Dict[str, Any]:
-    """
-    Trigger change detection for a specific site with baseline evolution.
-    
-    This endpoint starts the change detection process and returns immediately.
-    The system will automatically update baselines when changes are detected.
-    Use the progress endpoint to monitor the detection status.
-    
-    Parameters:
-    - use_simplified: If True, uses the new simplified change detector for better performance
-    """
+    """Trigger change detection for a specific site with baseline evolution."""
     try:
         if use_simplified:
             # Use simplified change detector
@@ -381,7 +381,7 @@ async def trigger_site_detection(site_id: str, use_simplified: bool = Query(defa
 
 @router.post("/trigger/all")
 async def trigger_all_sites_detection(use_simplified: bool = Query(default=True, description="Use simplified change detector for better performance")) -> Dict[str, Any]:
-    """Manually trigger change detection for all active sites."""
+    """Trigger change detection for all active sites."""
     try:
         if use_simplified:
             # Use simplified change detector for all sites
@@ -736,7 +736,7 @@ async def get_all_changes(
 
 @router.get("/analytics")
 async def get_system_analytics() -> Dict[str, Any]:
-    """Get comprehensive system analytics and statistics."""
+    """Get system analytics and statistics."""
     try:
         change_detector = get_change_detector()
         if change_detector is None:
@@ -756,7 +756,7 @@ async def get_system_analytics() -> Dict[str, Any]:
             if not site_config:
                 continue
                 
-            # Get recent changes and state for this site
+            # get recent changes and state for this site
             change_files = change_detector.writer.list_change_files(site_config.name)
             actual_change_files = [f for f in change_files if "state" not in f.lower()]
             state_files = [f for f in change_files if "state" in f.lower()]
@@ -768,10 +768,10 @@ async def get_system_analytics() -> Dict[str, Any]:
             site_urls = 0
             last_detection = None
             
-            # Get current URL count from latest state file
+            # get current URL count from latest state file
             if state_files:
                 try:
-                    latest_state_file = state_files[0]  # Most recent state file
+                    latest_state_file = state_files[0]  # most recent state file
                     state_data = change_detector.writer.read_json_file(latest_state_file)
                     
                     # Try multiple paths to find URL count
@@ -1083,10 +1083,10 @@ async def get_realtime_status() -> Dict[str, Any]:
             current_urls = 0
             last_change_count = 0
             
-            # Get current URL count from latest state file
+            # get current URL count from latest state file
             if state_files:
                 try:
-                    latest_state_file = state_files[0]  # Most recent state file
+                    latest_state_file = state_files[0]  # most recent state file
                     state_data = change_detector.writer.read_json_file(latest_state_file)
                     
                     # Try multiple paths to find URL count
@@ -1255,7 +1255,7 @@ async def get_realtime_status() -> Dict[str, Any]:
 
 @router.get("/progress")
 async def get_detection_progress() -> Dict[str, Any]:
-    """Get the current detection progress and status with baseline evolution information."""
+    """Get current detection progress and status."""
     global current_detection_status
     
     try:
@@ -1311,7 +1311,7 @@ async def get_detection_progress() -> Dict[str, Any]:
 async def list_baselines(
     site_id: str = Query(default=None, description="Filter by site ID")
 ) -> Dict[str, Any]:
-    """List all available baselines with evolution information."""
+    """List all available baselines."""
     try:
         from ..dependencies import get_baseline_manager
         
@@ -1339,7 +1339,7 @@ async def list_baselines(
 
 @router.get("/baselines/{site_id}")
 async def get_site_baselines(site_id: str) -> Dict[str, Any]:
-    """Get detailed baseline information for a specific site."""
+    """Get baseline information for a specific site."""
     try:
         from ..dependencies import get_baseline_manager
         

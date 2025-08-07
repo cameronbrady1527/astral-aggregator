@@ -1,20 +1,45 @@
 #!/usr/bin/env python3
-"""
-Simplified Trigger Router - High-performance change detection triggers
-This module provides simplified trigger endpoints that use the new simplified change detector.
-"""
+# ==============================================================================
+# simplified_trigger.py — Simplified Trigger Router for High-Performance Change Detection
+# ==============================================================================
+# Purpose: Provide simplified trigger endpoints using the new simplified change detector
+# Sections: Imports, Public Exports, Router Configuration, API Endpoints
+# ==============================================================================
 
+
+
+# ==============================================================================
+# Imports
+# ==============================================================================
+
+# Standard Library -----
 import asyncio
 import json
-from typing import Dict, Any, List
 from pathlib import Path
+from typing import Any, Dict, List
+
+# Third-Party -----
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
+# Internal -----
 try:
     from app.utils.simplified_change_detector import SimplifiedChangeDetector
 except ImportError:
     from ..utils.simplified_change_detector import SimplifiedChangeDetector
+
+# ==============================================================================
+# Public exports
+# ==============================================================================
+__all__ = [
+    'router',
+    'update_detection_status',
+    'detection_status'
+]
+
+# ==============================================================================
+# Router Configuration
+# ==============================================================================
 
 router = APIRouter(prefix="/api/simplified", tags=["simplified-trigger"])
 
@@ -32,15 +57,15 @@ def update_detection_status(**kwargs):
     global detection_status
     detection_status.update(kwargs)
 
+# ==============================================================================
+# API Endpoints
+# ==============================================================================
+
 @router.post("/trigger/{site_id}")
 async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
-    """
-    Trigger simplified change detection for a specific site.
-    
-    This endpoint uses the new simplified change detector for better performance.
-    """
+    """Trigger simplified change detection for a specific site."""
     try:
-        # Check if detection is already running
+        # check if detection is already running
         if detection_status["is_running"]:
             return {
                 "status": "busy",
@@ -48,10 +73,10 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
                 "current_site": detection_status["current_site"]
             }
         
-        # Initialize simplified change detector
+        # initialize simplified change detector
         detector = SimplifiedChangeDetector()
         
-        # Update status
+        # update status
         update_detection_status(
             is_running=True,
             current_site=site_id,
@@ -60,20 +85,20 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
             total_pages=0
         )
         
-        # Run detection in background
+        # run detection in background
         async def run_detection():
             try:
-                # Update progress
+                # update progress
                 update_detection_status(progress=25, message="Fetching sitemap URLs...")
                 await asyncio.sleep(0.1)
                 
                 update_detection_status(progress=50, message="Calculating content hashes...")
                 await asyncio.sleep(0.1)
                 
-                # Run actual detection
+                # run actual detection
                 results = await detector.detect_changes_for_site(site_id)
                 
-                # Update final status
+                # update final status
                 if results.get("baseline_updated"):
                     message = f"Detection completed - {results['summary']['total_changes']} changes detected"
                 else:
@@ -96,7 +121,7 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
                 )
                 raise e
         
-        # Start detection in background
+        # start detection in background
         asyncio.create_task(run_detection())
         
         return {
@@ -113,13 +138,13 @@ async def trigger_site_detection(site_id: str) -> Dict[str, Any]:
 
 @router.get("/progress")
 async def get_detection_progress() -> Dict[str, Any]:
-    """Get current detection progress."""
+    """Get current detection progress and status."""
     global detection_status
     return detection_status
 
 @router.get("/changes/{site_id}")
 async def get_site_changes(site_id: str, limit: int = Query(default=10, ge=1, le=100)) -> Dict[str, Any]:
-    """Get recent changes for a specific site."""
+    """Get recent changes for a specific site with optional limit."""
     try:
         changes_dir = Path("changes")
         if not changes_dir.exists():
@@ -129,7 +154,7 @@ async def get_site_changes(site_id: str, limit: int = Query(default=10, ge=1, le
                 "message": "No changes directory found"
             }
         
-        # Find change files for this site
+        # find change files for this site
         change_files = list(changes_dir.glob(f"{site_id}_*_changes.json"))
         change_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
         
@@ -155,11 +180,11 @@ async def get_site_changes(site_id: str, limit: int = Query(default=10, ge=1, le
 
 @router.get("/status")
 async def get_system_status() -> Dict[str, Any]:
-    """Get overall system status."""
+    """Get overall system status and recent baseline events."""
     try:
         detector = SimplifiedChangeDetector()
         
-        # Get baseline info
+        # get baseline info
         baseline_manager = detector.baseline_manager
         baseline_events = baseline_manager.get_baseline_events(limit=5)
         
@@ -183,7 +208,7 @@ async def list_baselines() -> Dict[str, Any]:
         detector = SimplifiedChangeDetector()
         baseline_manager = detector.baseline_manager
         
-        # Get all baselines
+        # get all baselines
         all_baselines = baseline_manager.list_baselines()
         
         return {
@@ -197,12 +222,12 @@ async def list_baselines() -> Dict[str, Any]:
 
 @router.get("/baselines/{site_id}")
 async def get_site_baseline(site_id: str) -> Dict[str, Any]:
-    """Get the latest baseline for a specific site."""
+    """Get latest baseline for a specific site."""
     try:
         detector = SimplifiedChangeDetector()
         baseline_manager = detector.baseline_manager
         
-        # Get latest baseline
+        # get latest baseline
         baseline = baseline_manager.get_latest_baseline(site_id)
         
         if not baseline:
